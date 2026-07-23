@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Digital Signage – Admin</title>
+<style>
+/* ── Reset & Base ───────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+     background:#f0f2f5;color:#1a1a2e;line-height:1.5}
+
+/* ── Layout ─────────────────────────────────────────── */
+.header{background:linear-gradient(135deg,#1a1a2e,#16213e);
+        color:#fff;padding:1.2rem 2rem}
+.header h1{font-size:1.5rem;font-weight:600}
+.header h1 small{font-size:.85rem;font-weight:400;opacity:.7;margin-left:1rem}
+.container{display:flex;gap:1.5rem;padding:1.5rem;max-width:1400px;margin:0 auto;
+           align-items:flex-start}
+.sidebar{width:340px;flex-shrink:0}
+.main{flex:1;min-width:0}
+
+/* ── Cards ──────────────────────────────────────────── */
+.card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);
+      padding:1.25rem;margin-bottom:1.25rem}
+.card h2{font-size:1.1rem;font-weight:600;margin-bottom:.75rem;
+         display:flex;align-items:center;gap:.5rem}
+.card h2 i{opacity:.6}
+
+/* ── Upload Zone ────────────────────────────────────── */
+.upload-zone{border:2px dashed #c5cae9;border-radius:12px;padding:2.5rem 1.5rem;
+             text-align:center;cursor:pointer;transition:.2s;
+             background:#f8f9ff;margin-bottom:1rem}
+.upload-zone:hover,.upload-zone.dragover{border-color:#3f51b5;background:#e8eaf6}
+.upload-zone .icon{font-size:2.5rem;margin-bottom:.5rem}
+.upload-zone p{color:#666;font-size:.9rem}
+.upload-zone input{display:none}
+
+/* ── Media Grid ─────────────────────────────────────── */
+.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+            gap:.75rem}
+.media-item{position:relative;border-radius:8px;overflow:hidden;
+            background:#f5f5f5;aspect-ratio:16/9;cursor:grab;
+            border:2px solid transparent;transition:.15s}
+.media-item:hover{border-color:#3f51b5}
+.media-item.selected{border-color:#3f51b5;background:#e8eaf6}
+.media-item img,.media-item .vid-icon{width:100%;height:100%;object-fit:cover}
+.media-item .vid-icon{display:flex;align-items:center;justify-content:center;
+                      background:#263238;color:#fff;font-size:2rem}
+.media-item .filename{position:absolute;bottom:0;left:0;right:0;
+                      background:linear-gradient(transparent,rgba(0,0,0,.7));
+                      color:#fff;font-size:.7rem;padding:1.5rem .4rem .3rem;
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.media-item .del-btn{position:absolute;top:4px;right:4px;width:24px;height:24px;
+                     border-radius:50%;border:none;background:rgba(0,0,0,.5);
+                     color:#fff;font-size:.8rem;cursor:pointer;opacity:0;
+                     transition:.15s;display:flex;align-items:center;justify-content:center}
+.media-item:hover .del-btn{opacity:1}
+.media-item .del-btn:hover{background:#e53935}
+
+/* ── Playlist ───────────────────────────────────────── */
+.playlist{list-style:none}
+.playlist li{padding:.5rem .75rem;border:1px solid #e0e0e0;border-radius:6px;
+             margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem;
+             background:#fafafa;cursor:grab;font-size:.9rem}
+.playlist li .grip{color:#bbb;cursor:grab;font-size:1rem}
+.playlist li .pname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.playlist li .ptype{font-size:.7rem;color:#999;text-transform:uppercase}
+.playlist li .premove{cursor:pointer;color:#e53935;background:none;border:none;font-size:1rem}
+.playlist-empty{color:#999;font-size:.9rem;text-align:center;padding:1rem}
+
+/* ── Settings ───────────────────────────────────────── */
+.settings label{display:block;font-size:.85rem;font-weight:500;margin-top:.6rem;margin-bottom:.2rem}
+.settings select,.settings input[type=number]{width:100%;padding:.5rem .6rem;
+              border:1px solid #d0d0d0;border-radius:6px;font-size:.9rem}
+.settings input[type=checkbox]{margin-right:.4rem}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;
+     border-radius:6px;border:none;cursor:pointer;font-size:.85rem;font-weight:500;
+     transition:.15s}
+.btn-primary{background:#3f51b5;color:#fff}
+.btn-primary:hover{background:#303f9f}
+.btn-success{background:#43a047;color:#fff}
+.btn-success:hover{background:#2e7d32}
+.btn-meta{background:#f5f5f5;color:#333;border:1px solid #ddd;width:100%;margin-top:.5rem}
+.btn-meta:hover{background:#eee}
+
+/* ── Player URL ─────────────────────────────────────── */
+.player-url{background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;
+            padding:.75rem 1rem;display:flex;align-items:center;gap:.5rem;
+            margin-top:.5rem}
+.player-url code{flex:1;font-size:1.05rem;background:#fff;padding:.3rem .6rem;
+                 border-radius:4px;border:1px solid #c8e6c9;word-break:break-all}
+.player-url .copy-btn{background:#43a047;color:#fff;border:none;border-radius:4px;
+                      padding:.3rem .7rem;cursor:pointer;font-size:.8rem}
+
+/* ── Toast ──────────────────────────────────────────── */
+.toast{position:fixed;bottom:2rem;right:2rem;padding:.8rem 1.5rem;border-radius:8px;
+       color:#fff;font-weight:500;z-index:999;animation:slideUp .3s ease;
+       box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.toast.ok{background:#43a047}
+.toast.err{background:#e53935}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:none;opacity:1}}
+
+/* ── Responsive ─────────────────────────────────────── */
+@media(max-width:900px){.container{flex-direction:column}.sidebar{width:100%}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🖼️ Digital Signage <small>Medienverwaltung</small></h1>
+</div>
+
+<div class="container">
+
+  <!-- ─── SIDEBAR ───────────────────────────────────── -->
+  <div class="sidebar">
+
+    <!-- Player URL -->
+    <div class="card">
+      <h2>📺 Player-URL</h2>
+      <div class="player-url">
+        <code id="playerUrl">{{ player_url }}</code>
+        <button class="copy-btn" onclick="copyUrl()">📋</button>
+      </div>
+      <p style="font-size:.8rem;color:#666;margin-top:.5rem">
+        URL im Browser des Tablets/Smart-TVs öffnen
+      </p>
+    </div>
+
+    <!-- Settings -->
+    <div class="card settings">
+      <h2>⚙️ Einstellungen</h2>
+      <label>Bild-Dauer (Sekunden)</label>
+      <input type="number" id="displayDuration" value="{{ config.display_duration }}" min="2" max="300">
+
+      <label>Übergang</label>
+      <select id="transition">
+        <option value="fade" {% if config.transition == 'fade' %}selected{% endif %}>Sanft (Fade)</option>
+        <option value="slide" {% if config.transition == 'slide' %}selected{% endif %}>Schieben</option>
+        <option value="none" {% if config.transition == 'none' %}selected{% endif %}>Sofort</option>
+      </select>
+
+      <label style="margin-top:.8rem">
+        <input type="checkbox" id="shuffle" {% if config.shuffle %}checked{% endif %}>
+        Zufallswiedergabe
+      </label>
+      <label>
+        <input type="checkbox" id="showClock" {% if config.show_clock %}checked{% endif %}>
+        Uhr einblenden
+      </label>
+      <label>
+        <input type="checkbox" id="showFilename" {% if config.show_filename %}checked{% endif %}>
+        Dateiname einblenden
+      </label>
+
+      <button class="btn btn-primary" onclick="saveSettings()" style="width:100%;margin-top:.8rem">
+        💾 Speichern
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── MAIN ──────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- Upload Zone -->
+    <div class="card">
+      <h2>📤 Medien hochladen</h2>
+      <div class="upload-zone" id="uploadZone">
+        <div class="icon">📁</div>
+        <p><strong>Klicken</strong> oder <strong>Drag & Drop</strong> von Bildern/Videos</p>
+        <p style="font-size:.8rem;color:#999;margin-top:.3rem">
+          JPG, PNG, GIF, WebP, BMP · MP4, WebM, MOV (max. 500 MB)
+        </p>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.mp4,.webm,.mov">
+      </div>
+    </div>
+
+    <!-- Media Library & Playlist -->
+    <div class="card">
+      <h2>📦 Medienbibliothek</h2>
+
+      {% if media %}
+      <div class="media-grid" id="mediaGrid">
+        {% for m in media %}
+        <div class="media-item" data-filename="{{ m.filename }}">
+          {% if m.type == 'video' %}
+          <div class="vid-icon">🎬</div>
+          {% else %}
+          <img src="{{ url_for('serve_media', filename=m.filename) }}" alt="{{ m.filename }}" loading="lazy">
+          {% endif %}
+          <div class="filename">{{ m.filename }}</div>
+          <button class="del-btn" onclick="deleteMedia('{{ m.filename }}')" title="Löschen">✕</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:2rem;color:#999">
+        <div style="font-size:3rem;margin-bottom:.5rem">🖼️</div>
+        <p>Noch keine Medien vorhanden.<br>Lade Bilder oder Videos hoch.</p>
+      </div>
+      {% endif %}
+
+      <hr style="margin:1rem 0;border:none;border-top:1px solid #eee">
+
+      <h2 style="margin-bottom:.5rem">📋 Playlist-Reihenfolge</h2>
+      <p style="font-size:.85rem;color:#666;margin-bottom:.75rem">
+        Ziehe die Einträge per Drag & Drop in die gewünschte Reihenfolge.
+      </p>
+      <ul class="playlist" id="playlist">
+        {% set ordered = media %}
+        {% for m in ordered %}
+        <li data-filename="{{ m.filename }}" draggable="true">
+          <span class="grip">⠿</span>
+          <span class="pname">{{ m.filename }}</span>
+          <span class="ptype">{{ m.type }}</span>
+          <button class="premove" onclick="removeFromPlaylist('{{ m.filename }}')">✕</button>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if not media %}
+      <div class="playlist-empty">Keine Medien in der Bibliothek</div>
+      {% endif %}
+      <button class="btn btn-success" onclick="savePlaylist()" style="margin-top:.5rem">
+        💾 Reihenfolge speichern
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Toast Helper ──────────────────────────────────────
+function showToast(msg, type='ok') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── Upload ────────────────────────────────────────────
+const zone = document.getElementById('uploadZone');
+const input = document.getElementById('fileInput');
+
+zone.addEventListener('click', () => input.click());
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragover');
+  if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+input.addEventListener('change', () => { if(input.files.length) handleFiles(input.files); });
+
+async function handleFiles(files) {
+  const form = new FormData();
+  for(const f of files) form.append('file', f);
+  try {
+    const res = await fetch('/api/upload', {method:'POST', body:form});
+    const data = await res.json();
+    if(data.status === 'ok') {
+      showToast(`✅ ${data.files.length} Datei(en) hochgeladen`);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast('❌ Fehler beim Hochladen', 'err');
+    }
+  } catch(e) {
+    showToast('❌ Verbindungsfehler', 'err');
+  }
+}
+
+// ── Delete Media ──────────────────────────────────────
+async function deleteMedia(filename) {
+  if(!confirm(`«${filename}» löschen?`)) return;
+  try {
+    const res = await fetch('/api/media/' + encodeURIComponent(filename), {method:'DELETE'});
+    const data = await res.json();
+    if(data.status === 'ok') {
+      showToast('🗑️ Gelöscht');
+      location.reload();
+    } else {
+      showToast('❌ ' + (data.message || 'Fehler'), 'err');
+    }
+  } catch(e) {
+    showToast('❌ Verbindungsfehler', 'err');
+  }
+}
+
+// ── Playlist Drag & Drop ──────────────────────────────
+const pl = document.getElementById('playlist');
+if(pl) {
+  let dragSrc = null;
+  pl.addEventListener('dragstart', e => {
+    dragSrc = e.target.closest('li');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  pl.addEventListener('dragover', e => {
+    e.preventDefault();
+    const target = e.target.closest('li');
+    if(target && target !== dragSrc) {
+      const rect = target.getBoundingClientRect();
+      const mid = rect.top + rect.height/2;
+      if(e.clientY < mid) target.parentNode.insertBefore(dragSrc, target);
+      else target.parentNode.insertBefore(dragSrc, target.nextSibling);
+    }
+  });
+  pl.addEventListener('dragend', () => { dragSrc = null; });
+}
+
+// ── Save Playlist Order ───────────────────────────────
+async function savePlaylist() {
+  const items = document.querySelectorAll('#playlist li');
+  const order = Array.from(items).map(li => li.dataset.filename);
+  try {
+    const res = await fetch('/api/playlist', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({playlist: order})
+    });
+    const data = await res.json();
+    if(data.status === 'ok') showToast('💾 Reihenfolge gespeichert');
+    else showToast('❌ Fehler', 'err');
+  } catch(e) {
+    showToast('❌ Verbindungsfehler', 'err');
+  }
+}
+
+// ── Remove From Playlist ──────────────────────────────
+async function removeFromPlaylist(filename) {
+  const items = document.querySelectorAll('#playlist li');
+  const order = Array.from(items).map(li => li.dataset.filename).filter(f => f !== filename);
+  try {
+    const res = await fetch('/api/playlist', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({playlist: order})
+    });
+    const data = await res.json();
+    if(data.status === 'ok') {
+      showToast('🗑️ Aus Playlist entfernt');
+      location.reload();
+    }
+  } catch(e) {
+    showToast('❌ Fehler', 'err');
+  }
+}
+
+// ── Save Settings ─────────────────────────────────────
+async function saveSettings() {
+  const payload = {
+    display_duration: parseInt(document.getElementById('displayDuration').value) || 8,
+    transition: document.getElementById('transition').value,
+    shuffle: document.getElementById('shuffle').checked,
+    show_clock: document.getElementById('showClock').checked,
+    show_filename: document.getElementById('showFilename').checked,
+  };
+  try {
+    const res = await fetch('/api/playlist', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(data.status === 'ok') showToast('💾 Einstellungen gespeichert');
+    else showToast('❌ Fehler', 'err');
+  } catch(e) {
+    showToast('❌ Verbindungsfehler', 'err');
+  }
+}
+
+// ── Copy Player URL ───────────────────────────────────
+function copyUrl() {
+  const el = document.getElementById('playerUrl');
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    showToast('📋 URL kopiert');
+  }).catch(() => {
+    // Fallback
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand('copy');
+    showToast('📋 URL kopiert');
+  });
+}
+</script>
+
+</body>
+</html>

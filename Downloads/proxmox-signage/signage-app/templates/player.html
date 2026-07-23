@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Digital Signage</title>
+<style>
+/* ── Reset ──────────────────────────────────────────── */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;
+          font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+
+/* ── Slides Container ───────────────────────────────── */
+#player{position:fixed;top:0;left:0;width:100vw;height:100vh;
+        display:flex;align-items:center;justify-content:center;
+        background:#000}
+
+.slide{position:absolute;top:0;left:0;width:100%;height:100%;
+       display:flex;align-items:center;justify-content:center;
+       opacity:0;will-change:opacity}
+.slide.active{opacity:1;z-index:1}
+.slide img,.slide video{max-width:100%;max-height:100%;
+                        object-fit:contain}
+
+/* ── Transition: fade ────────────────────────────────── */
+.fade .slide{transition:opacity 1s ease-in-out}
+.fade .slide.active{opacity:1}
+
+/* ── Transition: slide ───────────────────────────────── */
+.slide .slide{transition:transform .8s ease}
+.slide .slide.active{transform:translateX(0)}
+
+/* ── Transition: none ────────────────────────────────── */
+.none .slide{transition:none}
+
+/* ── Clock ──────────────────────────────────────────── */
+#clock{position:fixed;bottom:2rem;right:2rem;
+       color:rgba(255,255,255,.55);font-size:1.1rem;
+       text-shadow:0 1px 4px rgba(0,0,0,.6);
+       text-align:right;z-index:10;pointer-events:none;
+       font-variant-numeric:tabular-nums;
+       line-height:1.4;transition:opacity .5s}
+#clock.hidden{opacity:0}
+
+/* ── Filename overlay ───────────────────────────────── */
+#filename-overlay{position:fixed;bottom:2rem;left:2rem;
+                 color:rgba(255,255,255,.35);font-size:.8rem;
+                 text-shadow:0 1px 4px rgba(0,0,0,.6);
+                 z-index:10;pointer-events:none;
+                 transition:opacity .5s}
+#filename-overlay.hidden{opacity:0}
+
+/* ── Empty state ────────────────────────────────────── */
+#empty{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+       color:#444;text-align:center;font-size:1.3rem;z-index:5}
+#empty small{display:block;font-size:.9rem;margin-top:.5rem;opacity:.6}
+
+/* ── Spinner ────────────────────────────────────────── */
+#spinner{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+         width:40px;height:40px;border:3px solid #333;
+         border-top-color:#666;border-radius:50%;z-index:0;
+         animation:spin 1s linear infinite}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="player"></div>
+<div id="empty">📺 Keine Medien<br><small>Inhalte im Admin-Bereich hochladen</small></div>
+<div id="spinner"></div>
+<div id="clock"></div>
+<div id="filename-overlay"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  const playerEl  = document.getElementById('player');
+  const emptyEl   = document.getElementById('empty');
+  const spinnerEl = document.getElementById('spinner');
+  const clockEl   = document.getElementById('clock');
+  const filenameEl= document.getElementById('filename-overlay');
+
+  let items          = [];
+  let idx            = 0;
+  let displaySec     = 8;
+  let transition     = 'fade';
+  let showClock      = true;
+  let showFilename   = false;
+  let timer          = null;
+  let preloaded      = new Set();
+
+  // ── Clock ──────────────────────────────────────────
+  function tickClock() {
+    if(!showClock) { clockEl.classList.add('hidden'); return; }
+    clockEl.classList.remove('hidden');
+    const now = new Date();
+    clockEl.innerHTML = now.toLocaleDateString('de-DE',{
+      weekday:'long',day:'numeric',month:'long'
+    }) + '<br>' + now.toLocaleTimeString('de-DE',{
+      hour:'2-digit',minute:'2-digit'
+    });
+  }
+  tickClock();
+  setInterval(tickClock, 10000);
+
+  // ── Preload image ──────────────────────────────────
+  function preload(url) {
+    if(preloaded.has(url)) return;
+    preloaded.add(url);
+    const img = new Image();
+    img.src = url;
+  }
+
+  // ── Fetch playlist ────────────────────────────────
+  async function loadPlaylist() {
+    try {
+      const res = await fetch('/api/player/next');
+      const data = await res.json();
+
+      items        = data.items || [];
+      displaySec   = data.display_duration || 8;
+      transition   = data.transition || 'fade';
+      showClock    = data.show_clock !== false;
+      showFilename = data.show_filename === true;
+
+      playerEl.className = transition;
+
+      emptyEl.style.display = items.length ? 'none' : '';
+      spinnerEl.style.display = 'none';
+
+      // Clear old slides
+      playerEl.querySelectorAll('.slide').forEach(el => el.remove());
+      preloaded.clear();
+
+      if(items.length === 0) return;
+
+      // Build slides
+      items.forEach((item, i) => {
+        const slide = document.createElement('div');
+        slide.className = 'slide' + (i === 0 ? ' active' : '');
+        slide.dataset.index = i;
+
+        if(item.type === 'video') {
+          const video = document.createElement('video');
+          video.src = item.url;
+          video.autoplay = true;
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = false;
+          video.preload = 'auto';
+          video.addEventListener('ended', () => goNext());
+          video.addEventListener('loadedmetadata', () => {
+            // If video longer than default duration, extend
+            const vdur = video.duration;
+            if(vdur > displaySec && vdur < 600) {
+              displaySec = vdur + 0.5;
+            }
+          });
+          slide.appendChild(video);
+        } else {
+          const img = document.createElement('img');
+          img.src = item.url;
+          img.alt = item.filename;
+          img.draggable = false;
+          slide.appendChild(img);
+          preload(item.url); // preload adjacent
+        }
+
+        playerEl.appendChild(slide);
+      });
+
+      // Preload next image already
+      if(items.length > 1 && items[1].type === 'image') {
+        preload(items[1].url);
+      }
+
+      idx = 0;
+      filenameEl.textContent = items[0] ? items[0].filename : '';
+      filenameEl.classList.toggle('hidden', !showFilename || !items.length);
+      clockEl.classList.toggle('hidden', !showClock);
+
+      scheduleNext();
+
+    } catch(err) {
+      console.error('Playlist load error:', err);
+      setTimeout(loadPlaylist, 5000);
+    }
+  }
+
+  // ── Schedule next slide ──────────────────────────
+  function scheduleNext() {
+    clearTimeout(timer);
+    const current = items[idx];
+    if(current && current.type === 'video') return; // video controls timing
+    timer = setTimeout(goNext, displaySec * 1000);
+  }
+
+  // ── Go to next slide ──────────────────────────────
+  function goNext() {
+    if(items.length === 0) return;
+
+    const prev = document.querySelector(`.slide[data-index="${idx}"]`);
+    if(prev) prev.classList.remove('active');
+
+    idx = (idx + 1) % items.length;
+
+    const next = document.querySelector(`.slide[data-index="${idx}"]`);
+    if(next) next.classList.add('active');
+
+    // Update filename overlay
+    filenameEl.textContent = items[idx] ? items[idx].filename : '';
+
+    // Preload the one after next
+    const nextIdx = (idx + 1) % items.length;
+    if(items[nextIdx] && items[nextIdx].type === 'image') {
+      preload(items[nextIdx].url);
+    }
+
+    scheduleNext();
+  }
+
+  // ── Reload playlist periodically ──────────────────
+  loadPlaylist();
+  setInterval(loadPlaylist, 5 * 60 * 1000); // every 5 min
+
+  // ── Keyboard shortcuts (for admin testing) ──────
+  document.addEventListener('keydown', e => {
+    if(e.key === 'ArrowRight' || e.key === ' ') {
+      e.preventDefault();
+      clearTimeout(timer);
+      goNext();
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
