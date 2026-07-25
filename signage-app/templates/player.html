@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Digital Signage</title>
+<style>
+/* ── Reset ── */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+/* ── Slides Container ── */
+#player{position:fixed;top:0;left:0;width:100vw;height:100vh;
+  display:flex;align-items:center;justify-content:center}
+.slide{position:absolute;top:0;left:0;width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.slide img,.slide video{max-width:100%;max-height:100%;object-fit:contain}
+/* ── Fade ── */
+#player.fade .slide{opacity:0;transition:opacity 1s ease-in-out;will-change:opacity}
+#player.fade .slide.active{opacity:1;z-index:1}
+/* ── Slide (left←right) ── */
+#player.slide .slide{opacity:0;transform:translateX(100%);
+  transition:transform .7s cubic-bezier(.4,0,.2,1),opacity .7s cubic-bezier(.4,0,.2,1);will-change:transform,opacity}
+#player.slide .slide.active{opacity:1;transform:translateX(0);z-index:1}
+#player.slide .slide.active.exit-left{opacity:0;transform:translateX(-30%);z-index:0}
+/* ── None ── */
+#player.none .slide{opacity:0;transition:none}
+#player.none .slide.active{opacity:1;z-index:1}
+/* ── Clock ── */
+#clock{position:fixed;bottom:2rem;right:2rem;
+  color:rgba(255,255,255,.55);font-size:1.1rem;
+  text-shadow:0 1px 4px rgba(0,0,0,.6);text-align:right;z-index:10;
+  pointer-events:none;font-variant-numeric:tabular-nums;line-height:1.4;
+  transition:opacity .5s}
+#clock.hidden{opacity:0}
+/* ── Filename ── */
+#filename{position:fixed;bottom:2rem;left:2rem;
+  color:rgba(255,255,255,.3);font-size:.85rem;z-index:10;
+  pointer-events:none;transition:opacity .5s}
+#filename.hidden{opacity:0}
+/* ── Loading ── */
+.no-media{color:#555;font-size:1.5rem;font-weight:300}
+</style>
+</head>
+<body>
+<div id="player" class="fade">
+  <div class="no-media" id="noMedia">📺 Keine Medien</div>
+</div>
+<div id="clock"></div>
+<div id="filename" class="hidden"></div>
+
+<script>
+(function(){
+'use strict';
+
+const player=document.getElementById('player');
+const clockEl=document.getElementById('clock');
+const fnEl=document.getElementById('filename');
+let items=[],currentIndex=0,displayDuration=8,timer=null,transitionMode='fade',isTransitioning=false;
+
+let showClock=true,showFilename=false,bgColor='#000000',bgImage='';
+function updateClock(){clockEl.innerHTML=new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})+'<br>'+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
+updateClock();setInterval(updateClock,10000);
+
+async function loadPlaylist(){try{const r=await fetch('/api/player/next');const d=await r.json();const newItems=d.items||[];displayDuration=d.display_duration||8;
+  transitionMode=d.transition||'fade';player.className=transitionMode;showClock=d.show_clock!==false;showFilename=d.show_filename||false;
+  clockEl.classList.toggle('hidden',!showClock);bgColor=d.background_color||'#000000';bgImage=d.background_image||'';player.style.background=bgImage?'url(/media/'+encodeURIComponent(bgImage)+') center/cover no-repeat':bgColor;
+  // Läuft bereits dieselbe Playlist (gleiche Dateien, gleiche Reihenfolge)? Dann Slideshow
+  // nicht neu aufbauen – sonst würde jeder periodische Refresh (alle 5 Min.) die laufende
+  // Wiedergabe/ein laufendes Video abrupt unterbrechen und auf Slide 1 zurückspringen.
+  const unchanged=items.length===newItems.length&&items.every((it,i)=>it.filename===newItems[i].filename&&it.type===newItems[i].type);
+  if(unchanged&&items.length){fnEl.classList.toggle('hidden',!showFilename);return}
+  items=newItems;
+  const nc=document.getElementById('noMedia');if(nc)nc.remove();
+  if(!items.length){const e=document.createElement('div');e.className='no-media';e.id='noMedia';e.textContent='📺 Keine Medien';player.appendChild(e);return}
+  const existing=player.querySelectorAll('.slide');existing.forEach(el=>el.remove());
+  currentIndex=0;isTransitioning=false;
+  items.forEach((item,i)=>{const s=document.createElement('div');s.className='slide';s.id='slide-'+i;
+    if(item.type==='video'){const v=document.createElement('video');v.src=item.url;
+      v.muted=true;v.playsInline=true;v.loop=false;v.preload='auto';v.setAttribute('playsinline','');
+      v.addEventListener('ended',()=>goNext());
+      v.addEventListener('error',()=>{console.warn('Video error');setTimeout(goNext,2000)});
+      s.appendChild(v)}else{const img=document.createElement('img');img.src=item.url;
+        img.alt=item.filename;img.loading='lazy';s.appendChild(img)}
+    player.appendChild(s)});
+  setTimeout(()=>showSlide(0),100)}catch(e){console.error(e);setTimeout(loadPlaylist,3000)}}
+
+function showSlide(idx){if(isTransitioning)return;
+  const old=document.querySelector('#slide-'+currentIndex);
+  if(old&&old.classList.contains('active')){
+    if(transitionMode==='slide'){isTransitioning=true;old.classList.add('exit-left');
+      setTimeout(()=>{old.classList.remove('active','exit-left');isTransitioning=false},700)}
+    else old.classList.remove('active')}
+  currentIndex=idx;const slide=document.querySelector('#slide-'+currentIndex);
+  if(!slide){if(items.length)scheduleNext();return}
+  if(transitionMode==='slide')void slide.offsetWidth;
+  slide.classList.add('active');
+  // Filename
+  fnEl.textContent=items[idx]?items[idx].filename:'';
+  fnEl.classList.toggle('hidden',!showFilename);
+  // Preload next
+  const nxt=(idx+1)%items.length;
+  if(items[nxt]&&items[nxt].type==='image'){const img=new Image();img.src=items[nxt].url}
+  // Video play
+  const video=slide.querySelector('video');
+  if(video){video.currentTime=0;const p=video.play();p&&p.catch&&p.catch(()=>setTimeout(goNext,2000));return}
+  scheduleNext()}
+
+function scheduleNext(){clearTimeout(timer);timer=setTimeout(goNext,displayDuration*1000)}
+function goNext(){if(items.length)showSlide((currentIndex+1)%items.length)}
+function nextIndex(){return(currentIndex+1)%items.length}
+
+loadPlaylist();
+setInterval(loadPlaylist,5*60*1000);
+
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();clearTimeout(timer);goNext()}});
+
+})();
+</script>
+</body>
+</html>
