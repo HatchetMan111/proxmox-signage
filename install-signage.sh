@@ -12,6 +12,9 @@
 #  Update:
 #    bash <(curl -s ...) --update --id 210
 #
+#  Backup (Medien + Konfiguration sichern):
+#    bash <(curl -s ...) --backup --id 210
+#
 #  Deinstallieren:
 #    bash <(curl -s ...) --uninstall --id 210
 #
@@ -50,6 +53,8 @@ CT_TEMPLATE=""
 UNINSTALL=false
 UPDATE=false
 STATUS_CHECK=false
+BACKUP=false
+BACKUP_DIR="/root/signage-backups"
 LOCAL_MODE=false
 APP_SRC=""
 TMP_DIR=""
@@ -90,6 +95,8 @@ parse_args() {
             --uninstall) UNINSTALL=true; shift ;;
             --update)    UPDATE=true; shift ;;
             --status)    STATUS_CHECK=true; shift ;;
+            --backup)    BACKUP=true; shift ;;
+            --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
             --local)     LOCAL_MODE=true; shift ;;
             --help|-h)   usage; exit 0 ;;
             *)           die "Unbekanntes Argument: $1 (--help für Hilfe)" ;;
@@ -114,6 +121,8 @@ Options:
   --ip ADDR       Statische IP oder "dhcp" (Default: dhcp)
   --password TEXT Root-Passwort (Default: signage)
   --update        App-Dateien aktualisieren (Container bleibt)
+  --backup        Medien + Konfiguration als .tar.gz sichern
+  --backup-dir DIR Zielordner für Backups (Default: /root/signage-backups)
   --uninstall     Container vollständig entfernen
   --status        Service-Status anzeigen
   --local         Lokale Dateien verwenden (statt GitHub-Download)
@@ -128,6 +137,9 @@ Examples:
 
   # Update:
   bash <(curl -s ...) --update --id 210
+
+  # Backup vor einem Update:
+  bash <(curl -s ...) --backup --id 210
 
   # Deinstallieren:
   bash <(curl -s ...) --uninstall --id 210
@@ -158,7 +170,7 @@ check_prerequisites() {
     ok "Template: $CT_TEMPLATE"
 
     # Container-ID prüfen (nur bei Neuinstallation)
-    if ! $UNINSTALL && ! $UPDATE && ! $STATUS_CHECK; then
+    if ! $UNINSTALL && ! $UPDATE && ! $STATUS_CHECK && ! $BACKUP; then
         local orig_id="$CT_ID"
         while pct list 2>/dev/null | grep -q "^${CT_ID}\b"; do
             CT_ID=$((CT_ID + 1))
@@ -243,6 +255,137 @@ download_app() {
     ok "App-Dateien geladen"
 }
 
+# ── Waitress (Produktions-WSGI-Server) ─────────────────────────────────────
+# Flasks eingebauter Dev-Server ist explizit nicht für Produktivbetrieb
+# vorgesehen (nicht threaded per Default -> ein großer Upload blockiert alle
+# Displays gleichzeitig). Waitress ist ein schlanker, reiner Python-WSGI-Server
+# ohne C-Dependencies, passt gut in einen minimalen LXC-Container.
+ensure_waitress_installed() {
+    if pct exec "$CT_ID" -- test -x /usr/bin/waitress-serve 2>/dev/null || \
+       pct exec "$CT_ID" -- test -x /usr/local/bin/waitress-serve 2>/dev/null; then
+        return 0
+    fi
+    info "Installiere Waitress (Produktions-Server)..."
+    if pct exec "$CT_ID" -- apt-get install -y -qq python3-waitress 2>&1 | tail -2; then
+        if pct exec "$CT_ID" -- command -v waitress-serve &>/dev/null; then
+            ok "Waitress installiert (apt)"
+            return 0
+        fi
+    fi
+    warn "python3-waitress nicht über apt verfügbar – installiere über pip"
+    pct exec "$CT_ID" -- pip3 install --break-system-packages -q waitress 2>&1 | tail -3
+    pct exec "$CT_ID" -- command -v waitress-serve &>/dev/null && ok "Waitress installiert (pip)" \
+        || warn "Waitress-Installation fehlgeschlagen – falle auf Flask-Dev-Server zurück"
+}
+
+# ── systemd-Service schreiben ───────────────────────────────────────────────
+# Gemeinsam von Neuinstallation UND Update genutzt, damit bestehende
+# Container beim --update denselben Fix (Waitress statt Dev-Server) und
+# dieselbe Secret-Handhabung bekommen wie eine Neuinstallation.
+# Ein bereits vorhandenes SIGNAGE_SECRET wird wiederverwendet, NICHT neu
+# generiert – sonst würden bestehende Logins bei jedem Update ungültig.
+write_systemd_service() {
+    local existing_secret=""
+    if pct exec "$CT_ID" -- test -f /etc/systemd/system/signage.service 2>/dev/null; then
+        existing_secret=$(pct exec "$CT_ID" -- grep -oP '(?<=SIGNAGE_SECRET=)\S+' \
+            /etc/systemd/system/signage.service 2>/dev/null || true)
+    fi
+
+    local signage_secret="$existing_secret"
+    if [[ -z "$signage_secret" ]]; then
+        info "Generiere neues Session-Secret..."
+        signage_secret=$(openssl rand -hex 32 2>/dev/null || head -c32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    fi
+
+    local use_waitress="false"
+    if pct exec "$CT_ID" -- command -v waitress-serve &>/dev/null; then
+        use_waitress="true"
+    fi
+
+    local svc_tmp
+    svc_tmp=$(mktemp -d)
+
+    local exec_line
+    if [[ "$use_waitress" == "true" ]]; then
+        exec_line="/bin/sh -c 'exec waitress-serve --host=\${SIGNAGE_HOST} --port=\${SIGNAGE_PORT} --threads=6 app:app'"
+    else
+        exec_line="/usr/bin/python3 /opt/signage/app.py"
+    fi
+
+    cat > "$svc_tmp/signage.service" <<SVCEOF
+[Unit]
+Description=Digital Signage Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/signage
+ExecStart=${exec_line}
+Restart=always
+RestartSec=5
+Environment=SIGNAGE_HOST=0.0.0.0
+Environment=SIGNAGE_PORT=8080
+Environment=SIGNAGE_SECRET=${signage_secret}
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    pct push "$CT_ID" "$svc_tmp/signage.service" /etc/systemd/system/signage.service
+    rm -rf "$svc_tmp"
+
+    pct exec "$CT_ID" -- systemctl daemon-reload
+    pct exec "$CT_ID" -- systemctl enable signage &>/dev/null
+
+    if [[ "$use_waitress" == "true" ]]; then
+        ok "systemd-Service eingerichtet (Waitress, produktionstauglich)"
+    else
+        warn "systemd-Service eingerichtet (Flask-Dev-Server – für Produktivbetrieb eigentlich nicht empfohlen)"
+    fi
+}
+
+# ── Freien Speicherplatz im Container prüfen ───────────────────────────────
+check_disk_space() {
+    local min_mb="${1:-200}"
+    local avail_mb
+    avail_mb=$(pct exec "$CT_ID" -- df --output=avail -m /opt 2>/dev/null | tail -1 | tr -d ' ' || echo "")
+    if [[ -n "$avail_mb" && "$avail_mb" =~ ^[0-9]+$ && "$avail_mb" -lt "$min_mb" ]]; then
+        warn "Nur noch ${avail_mb} MB frei im Container (Upload-Limit ist 500 MB/Datei)."
+        warn "Ggf. Speicherplatz freigeben oder RootFS vergrößern: pct resize $CT_ID rootfs +2G"
+    fi
+}
+
+# ── Backup ──────────────────────────────────────────────────────────────────
+do_backup() {
+    header "Sichere Medien & Konfiguration – Container $CT_ID"
+    pct list 2>/dev/null | grep -q "^${CT_ID}\b" || die "Container $CT_ID existiert nicht"
+
+    mkdir -p "$BACKUP_DIR"
+    local ts archive
+    ts=$(date +%Y%m%d-%H%M%S)
+    archive="${BACKUP_DIR}/signage-${CT_ID}-${ts}.tar.gz"
+
+    info "Erstelle Archiv im Container..."
+    pct exec "$CT_ID" -- tar -czf /tmp/signage-backup.tar.gz -C /opt/signage media config.json \
+        || die "Backup im Container fehlgeschlagen"
+
+    info "Kopiere Archiv auf den Host..."
+    pct pull "$CT_ID" /tmp/signage-backup.tar.gz "$archive" \
+        || die "Kopieren des Backups fehlgeschlagen"
+    pct exec "$CT_ID" -- rm -f /tmp/signage-backup.tar.gz
+
+    local size
+    size=$(du -h "$archive" 2>/dev/null | cut -f1)
+    ok "Backup gespeichert: $archive (${size:-?})"
+    echo ""
+    echo -e "  ${CYAN}Wiederherstellen:${NC}"
+    echo "  pct push $CT_ID $archive /tmp/restore.tar.gz"
+    echo "  pct exec $CT_ID -- tar -xzf /tmp/restore.tar.gz -C /opt/signage"
+    echo "  pct exec $CT_ID -- systemctl restart signage"
+    echo ""
+    exit 0
+}
+
 # ── LXC erstellen ──────────────────────────────────────────────────────────
 create_container() {
     header "Erstelle LXC-Container (ID: $CT_ID)"
@@ -288,6 +431,9 @@ setup_container() {
         2>&1 | tail -3
     ok "Python + Flask installiert"
 
+    ensure_waitress_installed
+    check_disk_space
+
     # App-Dateien kopieren
     info "Kopiere App-Dateien..."
     pct exec "$CT_ID" -- mkdir -p /opt/signage/media /opt/signage/templates /opt/signage/static
@@ -303,16 +449,9 @@ setup_container() {
     done
     ok "Dateien kopiert"
 
-    # Session-Secret einmalig generieren, damit Logins nicht bei jedem
-    # Neustart des Dienstes (Absturz/Reboot/Update) ungültig werden.
-    info "Generiere Session-Secret..."
-    local signage_secret
-    signage_secret=$(openssl rand -hex 32 2>/dev/null || head -c32 /dev/urandom | od -An -tx1 | tr -d ' \n')
-
+    # Konfiguration anlegen (nur bei Neuinstallation – --update fasst das nicht an)
     local svc_tmp
     svc_tmp=$(mktemp -d)
-
-    # Konfiguration anlegen
     cat > "$svc_tmp/config.json" <<CFGEOF
 {
     "display_duration": 8,
@@ -324,33 +463,10 @@ setup_container() {
 }
 CFGEOF
     pct push "$CT_ID" "$svc_tmp/config.json" /opt/signage/config.json
-
-    # systemd-Service einrichten
-    info "Richte systemd-Service ein..."
-    cat > "$svc_tmp/signage.service" <<SVCEOF
-[Unit]
-Description=Digital Signage Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/signage
-ExecStart=/usr/bin/python3 /opt/signage/app.py
-Restart=always
-RestartSec=5
-Environment=SIGNAGE_HOST=0.0.0.0
-Environment=SIGNAGE_PORT=8080
-Environment=SIGNAGE_SECRET=${signage_secret}
-
-[Install]
-WantedBy=multi-user.target
-SVCEOF
-    pct push "$CT_ID" "$svc_tmp/signage.service" /etc/systemd/system/signage.service
     rm -rf "$svc_tmp"
 
-    pct exec "$CT_ID" -- systemctl daemon-reload
-    pct exec "$CT_ID" -- systemctl enable signage
+    info "Richte systemd-Service ein..."
+    write_systemd_service
     pct exec "$CT_ID" -- systemctl start signage
 
     sleep 2
@@ -361,13 +477,14 @@ SVCEOF
     fi
 }
 
-# ── Update (nur App-Dateien) ───────────────────────────────────────────────
+# ── Update (App-Dateien + Retrofit für ältere Installationen) ─────────────
 update_container() {
     header "Aktualisiere App in Container $CT_ID"
 
     pct list 2>/dev/null | grep -q "^${CT_ID}\b" || \
         die "Container $CT_ID existiert nicht. Bitte zuerst installieren."
 
+    check_disk_space
     download_app
 
     info "Kopiere neue Dateien..."
@@ -379,6 +496,13 @@ update_container() {
     for f in "$APP_SRC"/static/*; do
         [[ -f "$f" ]] && pct push "$CT_ID" "$f" "/opt/signage/static/$(basename "$f")"
     done
+
+    # Retrofit für Container, die mit einer älteren Installer-Version
+    # eingerichtet wurden: Waitress nachrüsten + Service-Unit aktualisieren.
+    # Das vorhandene SIGNAGE_SECRET wird dabei wiederverwendet (siehe
+    # write_systemd_service), bestehende Logins bleiben also gültig.
+    ensure_waitress_installed
+    write_systemd_service
 
     pct exec "$CT_ID" -- systemctl restart signage
     sleep 2
@@ -430,6 +554,7 @@ main() {
     # Sondermodi
     if $UNINSTALL; then do_uninstall; fi
     if $STATUS_CHECK; then do_status; fi
+    if $BACKUP; then do_backup; fi
     if $UPDATE; then download_app; update_container; fi
 
     # Standard: Neuinstallation
