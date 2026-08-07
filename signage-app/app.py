@@ -79,6 +79,15 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 _config_lock = threading.Lock()
 
+# Einfacher "Zuletzt online"-Status für den Player: bewusst NUR im Arbeitsspeicher
+# gehalten, nicht in config.json geschrieben. Der Player pollt regelmäßig
+# (alle 30s) - würde jeder Poll einen config_transaction()-Schreibzyklus
+# auslösen, wäre das unnötiger Disk-I/O nur für einen Zeitstempel. Bei einem
+# Neustart des Dienstes ist der Status "war noch nie online" wieder korrekt,
+# das ist für diesen einfachen Zweck ausreichend (kein Multi-Geräte-Tracking).
+_last_seen_lock = threading.Lock()
+_last_seen_at: datetime | None = None
+
 
 def _read_config_file() -> dict:
     if CONFIG_FILE.exists():
@@ -342,8 +351,54 @@ def admin():
             rule and rule.get("expires") and now.date() > date.fromisoformat(rule["expires"])
         ) if rule and rule.get("expires") else False
         item["zone"] = zones.get(item["filename"], "main")
+
+    # Playlist kann "logisch leer" sein (Zeitplan aktiv, Bereich nie zugewiesen),
+    # ohne dass man das im Admin auf den ersten Blick sieht - der Player zeigt
+    # dann einfach "Keine Medien". Das hier baut konkrete Hinweise dazu auf.
+    layout = config.get("layout", "fullscreen")
+    if layout not in VALID_LAYOUTS:
+        layout = "fullscreen"
+    hidden = set(config.get("hidden_items", []))
+    main_total = main_active = secondary_total = secondary_active = 0
+    for name in config.get("playlist", []):
+        if name in hidden:
+            continue
+        zone = zones.get(name, "main") if layout != "fullscreen" else "main"
+        active = is_item_active(name, config, now)
+        if zone == "secondary":
+            secondary_total += 1
+            if active:
+                secondary_active += 1
+        else:
+            main_total += 1
+            if active:
+                main_active += 1
+
+    playlist_warnings = []
+    if layout == "fullscreen":
+        if main_total > 0 and main_active == 0:
+            playlist_warnings.append(
+                f"Aktuell werden 0 von {main_total} Elementen angezeigt – vermutlich greift gerade ein Zeitplan (⏰)."
+            )
+    else:
+        if secondary_total == 0:
+            playlist_warnings.append(
+                "Der Sekundär-Bereich ist noch leer – zieh unten Medien ins Tray, damit dort etwas läuft."
+            )
+        elif secondary_active == 0:
+            playlist_warnings.append(
+                f"Aktuell werden 0 von {secondary_total} Elementen im Sekundär-Bereich angezeigt – vermutlich greift gerade ein Zeitplan (⏰)."
+            )
+        if main_total == 0:
+            playlist_warnings.append("Der Haupt-Bereich ist leer – lade Medien hoch.")
+        elif main_active == 0:
+            playlist_warnings.append(
+                f"Aktuell werden 0 von {main_total} Elementen im Haupt-Bereich angezeigt – vermutlich greift gerade ein Zeitplan (⏰)."
+            )
+
     player_url = request.host_url.rstrip("/") + "/player"
-    return render_template("admin.html", media=media, config=config, player_url=player_url)
+    return render_template("admin.html", media=media, config=config, player_url=player_url,
+                            playlist_warnings=playlist_warnings)
 
 
 @app.route("/player")
@@ -353,6 +408,17 @@ def player():
 
 
 # ── API Routes ──
+
+
+@app.route("/api/status")
+@api_login_required
+def api_status():
+    with _last_seen_lock:
+        seen = _last_seen_at
+    if seen is None:
+        return jsonify({"last_seen": None, "seconds_ago": None})
+    seconds_ago = (datetime.now() - seen).total_seconds()
+    return jsonify({"last_seen": seen.isoformat(), "seconds_ago": round(seconds_ago)})
 
 
 @app.route("/api/media", methods=["GET"])
@@ -468,6 +534,32 @@ def api_update_text_slide(slide_id):
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/zone/<key>", methods=["PUT"])
+@api_login_required
+def api_set_zone(key):
+    # Eigener, schlanker Endpunkt nur für die Bereichs-Zuweisung (Drag&Drop-Tray
+    # im Admin). Bewusst getrennt von /api/schedule/<key>: der Zeitplan-Endpunkt
+    # baut sein "rule"-Objekt bei jedem PUT komplett neu auf (days/start/end/
+    # expires) - würde man von dort aus nur {"zone": "..."} senden, ginge ein
+    # eventuell bestehender Zeitplan des Elements verloren. Dieser Endpunkt
+    # fasst ausschließlich item_zone an.
+    safe = Path(key).name
+    data = request.get_json(silent=True) or {}
+    zone = data.get("zone", "main")
+    if zone not in ("main", "secondary"):
+        zone = "main"
+    with config_transaction() as config:
+        valid = (MEDIA_DIR / safe).is_file() or safe in config.get("text_slides", {})
+        if not valid:
+            return jsonify({"status": "error", "message": "Element nicht gefunden"}), 404
+        config.setdefault("item_zone", {})
+        if zone == "secondary":
+            config["item_zone"][safe] = "secondary"
+        else:
+            config["item_zone"].pop(safe, None)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/schedule/<key>", methods=["PUT", "DELETE"])
 @api_login_required
 def api_set_schedule(key):
@@ -573,6 +665,9 @@ def api_playlist():
 
 @app.route("/api/player/next")
 def api_player_next():
+    global _last_seen_at
+    with _last_seen_lock:
+        _last_seen_at = datetime.now()
     config = load_config()
     playlist = list(config.get("playlist", []))
     hidden = set(config.get("hidden_items", []))

@@ -18,7 +18,9 @@ Du betreibst ein **kleines Unternehmen** (Café, Laden, Friseur, Praxis) und wil
 - **Produktbilder** oder **kurze Videos** präsentieren?
 - Den Content **einfach selbst aktualisieren** – ohne Agentur, ohne teure Software?
 
-**Dann ist dieses Projekt genau richtig.** Ein Einzeiler auf deinem Proxmox-Server, und du hast einen eigenen Digital-Signage-Server – komplett lokal, DSGVO-konform, und für immer kostenlos.
+**Dann ist dieses Projekt genau richtig.** Ein Einzeiler auf deinem Proxmox-Server, und du hast einen eigenen Digital-Signage-Server – komplett lokal und DSGVO-konform. Keine Lizenzgebühren, kein Abo – das spart im Schnitt **rund 500 € im Jahr**.
+
+Wir helfen dir, deinen Laden mit verschiedenen Lösungen ins 21. Jahrhundert zu bringen – dieses Projekt ist der Anfang davon.
 
 ---
 
@@ -34,6 +36,7 @@ Du betreibst ein **kleines Unternehmen** (Café, Laden, Friseur, Praxis) und wil
 | 🎬 **Fullscreen-Player** | Automatische Slideshow mit Überblend-Effekten (Fade / Slide) |
 | 🎞️ **Ken-Burns-Effekt** | Optionales sanftes Zoomen bei Standbildern für mehr Lebendigkeit |
 | 🖥️ **Split-Screen-Layouts** | Bildschirm in Bereiche teilen (Haupt + Ticker/Seitenleiste/2er-Split), jeder Bereich mit eigener unabhängiger Wiedergabe |
+| 🟢 **Live-Status** | Admin zeigt, ob der Player gerade online ist, plus Warnhinweis, falls gerade nichts angezeigt wird (z. B. wegen Zeitplan) |
 | 📺 **Jeder Browser** | Läuft auf Tablet, Smart-TV, Handy, Laptop – kein App-Store nötig |
 | 🕐 **Live-Uhr** | Optional: Datum + Uhrzeit im Player |
 | 🔧 **REST-API** | Alles programmierbar – für Automationen & eigene Tools |
@@ -208,7 +211,7 @@ Du darfst das Projekt **frei nutzen, verändern, weitergeben und kommerziell ein
 Nur für die Installation (Paket-Download). Danach läuft alles lokal.
 
 **Kann ich mehrere Player gleichzeitig bespielen?**  
-Ja – jeder Player öffnet dieselbe URL. Änderungen an der Playlist sind sofort sichtbar.
+Ja – jeder Player öffnet dieselbe URL. Änderungen an der Playlist werden spätestens nach 30 Sekunden übernommen (der Player fragt automatisch alle 30s nach).
 
 **Welche Formate werden unterstützt?**  
 Bilder: JPG, PNG, GIF, WebP, BMP. Videos: MP4 (empfohlen), WebM, MOV.
