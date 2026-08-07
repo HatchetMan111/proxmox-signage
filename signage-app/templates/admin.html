@@ -5,128 +5,333 @@
 <title>Digital Signage – Admin</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#14161C;--ink-soft:#585F72;--ink-faint:#9096A6;
+  --paper:#EEF0F5;--panel:#FFFFFF;--line:#DFE2E9;--line-soft:#EBEDF2;
+  --accent:#E2A13B;--accent-ink:#7A4E10;--accent-soft:#FBEEDA;--accent-line:#EFC98A;
+  --danger:#D1483A;--danger-soft:#FBEAE7;--success:#3F8F6F;--success-soft:#E7F2ED;
+  --radius-lg:18px;--radius-md:12px;--radius-sm:8px;
+  --shadow-card:0 1px 2px rgba(20,22,28,.04),0 10px 24px -8px rgba(20,22,28,.10);
+  --shadow-lift:0 6px 16px -4px rgba(20,22,28,.14),0 20px 44px -12px rgba(20,22,28,.16);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
 html{font-size:15px}
-body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#eef0f4;color:#1a1a2e;line-height:1.5}
-.header{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;padding:1.2rem 2.5rem;display:flex;justify-content:space-between;align-items:center}
-.header h1{font-size:1.4rem;font-weight:600}
-.header h1 span{font-weight:400;opacity:.6;font-size:.95rem}
-.header .logout{color:rgba(255,255,255,.5);text-decoration:none;font-size:.85rem;padding:.4rem .8rem;border-radius:8px;transition:all .2s;display:flex;align-items:center;gap:.4rem}
+body{font-family:var(--font);background:var(--paper);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:var(--font-mono);font-size:.66rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-soft)}
+
+/* ── Header ── */
+.header{background:var(--ink);color:#fff;padding:1.1rem 2.5rem;display:flex;justify-content:space-between;align-items:center}
+.brand{display:flex;align-items:center;gap:.7rem}
+.brand-mark{width:2.1rem;height:2.1rem;flex-shrink:0}
+.brand h1{font-size:1.15rem;font-weight:800;letter-spacing:-.01em}
+.brand .tag{display:inline-block;margin-left:.6rem;font-family:var(--font-mono);font-size:.62rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);border:1px solid rgba(226,161,59,.4);border-radius:999px;padding:.15rem .55rem;vertical-align:middle}
+.header .logout{color:rgba(255,255,255,.55);text-decoration:none;font-size:.82rem;padding:.45rem .8rem;border-radius:8px;transition:all .2s;display:flex;align-items:center;gap:.4rem}
 .header .logout:hover{color:#fff;background:rgba(255,255,255,.1)}
-.container{max-width:1260px;margin:0 auto;padding:1.8rem;display:grid;grid-template-columns:1fr 380px;gap:1.8rem;align-items:start}
-@media(max-width:1024px){.container{grid-template-columns:1fr}}
-.upload-zone{border:3px dashed #d0d3db;border-radius:16px;padding:2.8rem 2rem;text-align:center;cursor:pointer;transition:all .3s;background:#fff;margin-bottom:1.5rem}
-.upload-zone:hover,.upload-zone.dragover{border-color:#1a1a2e;background:#f4f5fb;transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.06)}
-.upload-zone .icon{font-size:3.2rem;margin-bottom:.8rem}
-.upload-zone p{color:#777;font-size:.9rem;line-height:1.6}
-.upload-zone p strong{color:#1a1a2e}
-.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
-.media-item{position:relative;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.07);cursor:grab;user-select:none;transition:all .25s}
-.media-item:hover{box-shadow:0 8px 28px rgba(0,0,0,.12);transform:translateY(-3px)}
-.media-item.dragging{opacity:.35;transform:scale(.92)}
-.media-item.dimmed{opacity:.4}
-.media-item .thumb{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:#f0f0f0}
-.media-item .video-badge{width:100%;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;font-size:2.8rem;background:#eef0f4}
-.media-item .info{padding:.5rem .7rem;display:flex;align-items:center;gap:.3rem}
-.media-item .info .name{font-size:.78rem;color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-.media-item .info .act-btn{background:none;border:none;cursor:pointer;font-size:.9rem;padding:2px 4px;line-height:1;transition:all .2s;border-radius:4px}
-.media-item .info .act-btn:hover{background:#eef0f4}
-.drag-hint{font-size:.78rem;color:#aaa;text-align:center;padding:.6rem;border:1px dashed #ddd;border-radius:8px;margin-top:.8rem;background:#fafbfc}
-.empty-state{text-align:center;padding:3rem 2rem;color:#aaa}
-.empty-state .icon{font-size:3.5rem;margin-bottom:.6rem}.empty-state p{font-size:.9rem}
-.card{background:#fff;border-radius:14px;padding:1.5rem;margin-bottom:1.2rem;box-shadow:0 2px 8px rgba(0,0,0,.05)}
-.card h3{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:#1a1a2e;display:flex;align-items:center;gap:.4rem}
-.setting-row{margin-bottom:.9rem}
-.setting-row label{display:block;font-size:.82rem;font-weight:500;color:#666;margin-bottom:.3rem}
-.setting-row input[type="number"],.setting-row select{width:100%;padding:.5rem .7rem;border:2px solid #e0e3e8;border-radius:8px;font-size:.9rem;background:#fafbfc;transition:border-color .2s}
-.setting-row input[type="number"]:focus,.setting-row select:focus{outline:none;border-color:#1a1a2e}
-.setting-row input[type="number"]{width:90px}
-.setting-row input[type="color"]{width:50px;height:36px;border:2px solid #e0e3e8;border-radius:8px;padding:2px;cursor:pointer}
-.setting-row .check-label{display:flex;align-items:center;gap:.4rem;cursor:pointer;font-weight:400;color:#444;font-size:.85rem}
-.setting-row .check-label input[type="checkbox"]{width:1.1rem;height:1.1rem;accent-color:#1a1a2e}
-.btn{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;border:none;padding:.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:500;transition:all .2s}
-.btn:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 12px rgba(26,26,46,.2)}
+
+/* ── Passwort-Banner ── */
+.banner{background:var(--accent-soft);color:var(--accent-ink);padding:.75rem 2.5rem;font-size:.85rem;text-align:center;border-bottom:1px solid var(--accent-line);display:flex;align-items:center;justify-content:center;gap:.5rem}
+
+.container{max-width:1280px;margin:0 auto;padding:2rem;display:grid;grid-template-columns:1fr 360px;gap:1.75rem;align-items:start}
+@media(max-width:1024px){.container{grid-template-columns:1fr;padding:1.25rem}}
+
+/* ── Text-Slide-Button (jetzt kompakte Toolbar-Aktion) ── */
+.toolbar{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1rem;gap:1rem;flex-wrap:wrap}
+.toolbar h2{font-size:1rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:.5rem}
+.toolbar h2 .count{font-family:var(--font-mono);font-weight:500;font-size:.78rem;color:var(--ink-faint)}
+.ghost-btn{background:var(--panel);border:1.5px solid var(--line);color:var(--ink);padding:.5rem 1rem;border-radius:999px;cursor:pointer;font-size:.82rem;font-weight:600;transition:all .18s;display:inline-flex;align-items:center;gap:.4rem}
+.ghost-btn:hover{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft)}
+
+/* ── Upload-Zone: Leuchttisch-Slot ── */
+.upload-zone{border:2px dashed var(--line);border-radius:var(--radius-lg);padding:2.6rem 2rem;text-align:center;cursor:pointer;transition:all .25s;background:var(--panel);margin-bottom:1.75rem;position:relative}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:var(--accent-soft);box-shadow:var(--shadow-card)}
+.upload-zone .icon{width:2.6rem;height:2.6rem;margin:0 auto .9rem;color:var(--ink-faint);transition:color .25s}
+.upload-zone:hover .icon,.upload-zone.dragover .icon{color:var(--accent-ink)}
+.upload-zone p{color:var(--ink-soft);font-size:.9rem;line-height:1.65}
+.upload-zone p strong{color:var(--ink);font-weight:700}
+.upload-zone .hint{font-size:.78rem;color:var(--ink-faint);font-family:var(--font-mono);letter-spacing:.02em}
+
+/* ── Medien-Grid: nummeriertes Filmstreifen-Raster ── */
+.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(198px,1fr));gap:1rem}
+.media-item{position:relative;border-radius:var(--radius-md);overflow:hidden;background:var(--panel);border:1px solid var(--line-soft);box-shadow:var(--shadow-card);cursor:grab;user-select:none;transition:box-shadow .2s,transform .2s}
+.media-item:hover{box-shadow:var(--shadow-lift);transform:translateY(-2px)}
+.media-item.dragging{opacity:.35;transform:scale(.94)}
+.media-item.drag-over{outline:2px solid var(--accent);outline-offset:-2px}
+.media-item.dimmed{opacity:.42}
+.media-item .thumb{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:var(--paper)}
+.media-item .video-badge{width:100%;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;font-size:2.4rem;background:var(--ink);color:#fff}
+.media-item .info{padding:.5rem .6rem;display:flex;align-items:center;gap:.35rem;border-top:1px solid var(--line-soft)}
+.media-item .info .frame-no{font-family:var(--font-mono);font-size:.68rem;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:5px;padding:.05rem .35rem;flex-shrink:0}
+.media-item .info .name{font-size:.76rem;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.media-item .info .act-btn{background:none;border:none;cursor:pointer;font-size:.88rem;padding:2px 4px;line-height:1;transition:all .15s;border-radius:5px;color:var(--ink-faint)}
+.media-item .info .act-btn:hover{background:var(--paper);color:var(--ink)}
+.drag-hint{font-size:.76rem;color:var(--ink-faint);text-align:center;padding:.65rem;border:1px dashed var(--line);border-radius:var(--radius-sm);margin-top:.9rem;background:var(--panel)}
+.empty-state{text-align:center;padding:3.2rem 2rem;color:var(--ink-faint)}
+.empty-state .icon{width:2.6rem;height:2.6rem;margin:0 auto .7rem;color:var(--ink-faint)}
+.empty-state p{font-size:.9rem}
+
+.media-item .badges{position:absolute;top:.5rem;left:.5rem;display:flex;gap:.25rem;z-index:2}
+.media-item .badge{background:rgba(20,22,28,.72);color:#fff;font-size:.63rem;font-weight:600;padding:.18rem .5rem;border-radius:999px;backdrop-filter:blur(2px)}
+.media-item .badge.expired{background:var(--danger)}
+.media-item .text-thumb{width:100%;aspect-ratio:16/10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;padding:.6rem;text-align:center;font-size:.72rem;font-weight:700;overflow:hidden}
+.media-item .text-thumb .ti{font-size:1.5rem}
+
+/* ── Sidebar-Karten ── */
+.card{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--radius-lg);padding:1.4rem;margin-bottom:1.1rem;box-shadow:var(--shadow-card)}
+.card h3{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:1.1rem;color:var(--ink-soft);display:flex;align-items:center;gap:.45rem}
+.card h3 .ic{font-size:1rem}
+.setting-row{margin-bottom:.85rem}
+.setting-row>label{display:block;font-size:.8rem;font-weight:600;color:var(--ink);margin-bottom:.35rem}
+.setting-row input[type="number"],.setting-row select{width:100%;padding:.5rem .7rem;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-size:.88rem;background:var(--paper);color:var(--ink);transition:border-color .15s;font-family:var(--font)}
+.setting-row input[type="number"]:focus,.setting-row select:focus{outline:none;border-color:var(--accent)}
+.setting-row input[type="number"]{width:100px;font-family:var(--font-mono)}
+.setting-row input[type="color"]{width:52px;height:38px;border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:2px;cursor:pointer;background:var(--panel)}
+
+/* Toggle-Switches (echte Checkbox bleibt, nur visuell neu) */
+.switch-row{display:flex;align-items:center;gap:.65rem;cursor:pointer;padding:.4rem 0}
+.switch{position:relative;display:inline-flex;flex-shrink:0;width:2.35rem;height:1.35rem}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.switch-track{position:absolute;inset:0;background:var(--line);border-radius:999px;transition:background .2s}
+.switch-thumb{position:absolute;top:2px;left:2px;width:1.05rem;height:1.05rem;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(20,22,28,.3)}
+.switch input:checked~.switch-track{background:var(--accent)}
+.switch input:checked~.switch-track .switch-thumb{transform:translateX(1rem)}
+.switch input:focus-visible~.switch-track{outline:2px solid var(--accent);outline-offset:2px}
+.switch-label{font-size:.85rem;color:var(--ink);font-weight:500}
+
+.btn{background:var(--ink);color:#fff;border:none;padding:.55rem 1.3rem;border-radius:var(--radius-sm);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .18s;font-family:var(--font)}
+.btn:hover{background:#25272F;box-shadow:var(--shadow-card)}
+.btn.btn-accent{background:var(--accent);color:var(--accent-ink)}
+.btn.btn-accent:hover{background:#EDAE52}
 .btn-row{display:flex;gap:.5rem;margin-top:.3rem}
 .pw-row{display:flex;gap:.5rem}
-.pw-row input[type="password"]{flex:1;padding:.5rem .7rem;border:2px solid #e0e3e8;border-radius:8px;font-size:.85rem;background:#fafbfc}
-.pw-row input[type="password"]:focus{outline:none;border-color:#1a1a2e}
-.pw-msg{font-size:.8rem;margin-top:.3rem;min-height:1.2rem}
-.player-url{background:#f4f5fb;padding:.7rem;border-radius:8px;font-family:monospace;font-size:.82rem;word-break:break-all;cursor:pointer;margin-top:.3rem;border:1px solid #e0e3e8}
-.player-url:hover{background:#eef0f4;border-color:#1a1a2e}
-.toast{position:fixed;bottom:2rem;right:2rem;background:#1a1a2e;color:#fff;padding:.7rem 1.3rem;border-radius:10px;font-size:.85rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:slideUp .3s ease}
-.toast.err{background:#dc2626}
+.pw-row input[type="password"]{flex:1;padding:.5rem .7rem;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-size:.85rem;background:var(--paper);font-family:var(--font)}
+.pw-row input[type="password"]:focus{outline:none;border-color:var(--accent)}
+.pw-msg{font-size:.78rem;margin-top:.4rem;min-height:1.2rem;font-weight:600}
+.player-url{background:var(--paper);padding:.7rem .8rem;border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:.78rem;word-break:break-all;cursor:pointer;margin-top:.3rem;border:1.5px solid var(--line);transition:all .15s;color:var(--ink-soft)}
+.player-url:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+
+.toast{position:fixed;bottom:2rem;right:2rem;background:var(--ink);color:#fff;padding:.7rem 1.3rem;border-radius:var(--radius-sm);font-size:.85rem;z-index:9999;box-shadow:var(--shadow-lift);animation:slideUp .3s ease}
+.toast.err{background:var(--danger)}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.text-slide-modal-btn{display:none} /* Platzhalter entfernt, Aktion sitzt jetzt in .toolbar */
+
+.layout-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.9rem}
+.layout-option{border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:.6rem;cursor:pointer;text-align:center;transition:all .15s;background:var(--panel)}
+.layout-option:hover{border-color:var(--accent)}
+.layout-option.active{border-color:var(--accent);background:var(--accent-soft)}
+.layout-option .diagram{width:100%;height:2.5rem;background:var(--paper);border-radius:5px;overflow:hidden;display:flex;margin-bottom:.45rem;border:1px solid var(--line-soft);gap:2px;padding:2px}
+.layout-option .diagram .z{background:var(--line);border-radius:2px}
+.layout-option .diagram .z-main{background:var(--ink-soft)}
+.layout-option.active .diagram .z-main{background:var(--accent)}
+.layout-option span{font-size:.7rem;font-weight:600;color:var(--ink-soft)}
+.layout-option.active span{color:var(--accent-ink)}
+.hint{font-size:.74rem;color:var(--ink-faint);line-height:1.5}
+.media-item .badge.zone{background:rgba(20,22,28,.55)}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(20,22,28,.55);display:none;align-items:center;justify-content:center;z-index:10000;padding:1rem}
+.modal-overlay.show{display:flex}
+.modal{background:var(--panel);border-radius:var(--radius-lg);padding:1.7rem;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(20,22,28,.35);max-height:90vh;overflow-y:auto}
+.modal h3{font-size:1rem;font-weight:800;margin-bottom:1.1rem;display:flex;align-items:center;gap:.4rem}
+.modal textarea{width:100%;padding:.6rem .7rem;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-size:.9rem;font-family:var(--font);resize:vertical;min-height:70px;background:var(--paper)}
+.modal input[type="text"],.modal input[type="time"],.modal input[type="date"],.modal select{width:100%;padding:.5rem .7rem;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-size:.85rem;background:var(--paper);font-family:var(--font)}
+.modal textarea:focus,.modal input:focus{outline:none;border-color:var(--accent)}
+.modal label.field-label{display:block;font-size:.76rem;font-weight:600;color:var(--ink-soft);margin:.8rem 0 .35rem;text-transform:uppercase;letter-spacing:.04em}
+.modal .row2{display:flex;gap:.7rem}
+.modal .row2>div{flex:1}
+.modal .weekdays{display:flex;gap:.3rem;margin-top:.35rem;flex-wrap:wrap}
+.modal .weekdays label{display:flex;flex-direction:column;align-items:center;gap:.25rem;font-size:.68rem;color:var(--ink-soft);cursor:pointer;font-weight:600}
+.modal .weekdays input{accent-color:var(--accent);width:1.1rem;height:1.1rem}
+.modal .modal-actions{display:flex;gap:.5rem;margin-top:1.4rem;justify-content:flex-end;flex-wrap:wrap}
+.modal .btn-cancel{background:var(--paper);color:var(--ink-soft)}
+.modal .btn-cancel:hover{background:var(--line-soft)}
+.modal .btn-danger{background:var(--danger)}
+.modal .btn-danger:hover{background:#B93B2F}
+.modal .hint{font-size:.72rem;color:var(--ink-faint);margin-top:.35rem}
 </style>
 </head>
 <body>
 <div class="header">
-  <h1>🖼️ Digital Signage <span>Admin</span></h1>
-  <a class="logout" href="/admin/logout">🚪 Abmelden</a>
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="10" width="24" height="17" rx="3" fill="#25272F" stroke="#3A3D48" stroke-width="1"/>
+      <rect x="11" y="16" width="25" height="18" rx="3" fill="#E2A13B"/>
+      <path d="M20 22.5L27 26.8V18.2L20 22.5Z" fill="#14161C"/>
+    </svg>
+    <h1>Digital Signage<span class="tag">Admin</span></h1>
+  </div>
+  <a class="logout" href="/admin/logout">Abmelden ↦</a>
 </div>
 {% if config.force_password_change %}
-<div style="background:#fef3c7;color:#92400e;padding:.8rem 2.5rem;font-size:.85rem;text-align:center">
+<div class="banner">
   ⚠️ Du verwendest noch das Standard-Passwort. Bitte jetzt unter „🔑 Passwort ändern" ein eigenes, sicheres Passwort (min. 8 Zeichen) setzen.
 </div>
 {% endif %}
 <div class="container">
   <main>
     <div class="upload-zone" id="uploadZone">
-      <div class="icon">📤</div>
-      <p><strong>Bilder & Videos hier reinziehen</strong><br>oder klicken zum Auswählen<br><span style="font-size:.8rem;color:#aaa">JPG, PNG, GIF, WebP, MP4, WebM, MOV</span></p>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M12 3l-4 4M12 3l4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      <p><strong>Bilder & Videos hier reinziehen</strong><br>oder klicken zum Auswählen</p>
+      <p class="hint">JPG · PNG · GIF · WebP · MP4 · WebM · MOV</p>
       <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mov" style="display:none">
     </div>
-    <h2 style="font-size:1.05rem;font-weight:600;color:#1a1a2e;margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem">📁 Medien <span style="font-weight:400;font-size:.8rem;color:#999">({{ media|length }})</span></h2>
+    <div class="toolbar">
+      <h2>📁 Medien <span class="count">({{ media|length }})</span></h2>
+      <button class="ghost-btn" onclick="openTextSlideModal()">✍️ Text-Slide erstellen</button>
+    </div>
     <div id="mediaContainer">
       {% if media %}
       <div class="media-grid" id="mediaGrid">
         {% set hidden = config.hidden_items or [] %}
         {% for m in media %}
         <div class="media-item{% if m.filename in hidden %} dimmed{% endif %}" data-filename="{{ m.filename }}" data-index="{{ loop.index0 }}" draggable="true">
+          {% if m.has_schedule or m.zone == "secondary" %}
+          <div class="badges">
+            {% if m.has_schedule %}<span class="badge{% if m.expired %} expired{% endif %}">{{ '⏰ Abgelaufen' if m.expired else '⏰ Zeitplan' }}</span>{% endif %}
+            {% if m.zone == "secondary" %}<span class="badge zone">◧ Sekundär</span>{% endif %}
+          </div>
+          {% endif %}
           {% if m.type == "video" %}
           <div class="video-badge">🎬</div>
+          {% elif m.type == "text" %}
+          <div class="text-thumb" style="background:{{ m.bg_color }};color:{{ m.text_color }}">
+            {% if m.icon %}<span class="ti">{{ m.icon }}</span>{% endif %}
+            <span>{{ m.text }}</span>
+          </div>
           {% else %}
           <img class="thumb" src="{{ url_for('serve_media', filename=m.filename) }}" alt="{{ m.filename }}" loading="lazy">
           {% endif %}
           <div class="info">
+            <span class="frame-no">{{ '%02d'|format(loop.index) }}</span>
             <button class="act-btn" onclick="toggleHide('{{ m.filename }}')" title="{{ 'Ausgeblendet' if m.filename in hidden else 'Ausblenden' }}">{{ '🚫' if m.filename in hidden else '👁️' }}</button>
-            <span class="name" title="{{ m.filename }}">{{ m.filename }}</span>
-            <button class="act-btn" onclick="del('{{ m.filename }}',this)" style="color:#ccc" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#ccc'">✕</button>
+            <button class="act-btn" onclick="openSchedule('{{ m.filename }}')" title="Zeitplan / Ablaufdatum">⏰</button>
+            {% if m.type == "text" %}
+            <button class="act-btn" onclick="openTextSlideModal('{{ m.filename }}')" title="Text bearbeiten">✏️</button>
+            {% endif %}
+            <span class="name" title="{{ m.filename }}">{{ m.text if m.type=="text" else m.filename }}</span>
+            <button class="act-btn" onclick="del('{{ m.filename }}',this)" title="Löschen">✕</button>
           </div>
         </div>
         {% endfor %}
       </div>
-      <div class="drag-hint">↕ Medien per Drag & Drop sortieren &nbsp;|&nbsp; 👁️ zum Ausblenden &nbsp;|&nbsp; ✕ zum Löschen</div>
+      <div class="drag-hint">↕ Medien per Drag & Drop sortieren (Nummer = Wiedergabe-Reihenfolge) &nbsp;|&nbsp; 👁️ zum Ausblenden &nbsp;|&nbsp; ✕ zum Löschen</div>
       {% else %}
-      <div class="empty-state"><div class="icon">🖼️</div><p>Noch keine Medien – zieh Dateien oben rein</p></div>
+      <div class="empty-state">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-9 9"/></svg>
+        <p>Noch keine Medien – zieh Dateien oben rein</p>
+      </div>
       {% endif %}
     </div>
   </main>
   <aside>
     <div class="card">
-      <h3>📺 Player-URL</h3>
+      <h3><span class="ic">📺</span> Player-URL</h3>
       <div class="player-url" onclick="copyUrl('{{ player_url }}')">{{ player_url }}</div>
-      <p style="font-size:.75rem;color:#999;margin-top:.4rem">📋 Klick zum Kopieren</p>
+      <p style="font-size:.74rem;color:var(--ink-faint);margin-top:.4rem">📋 Klick zum Kopieren</p>
     </div>
     <div class="card">
-      <h3>⚙️ Wiedergabe</h3>
+      <h3><span class="ic">⚙️</span> Wiedergabe</h3>
       <div class="setting-row"><label>Anzeigedauer (Sek.)</label><input type="number" id="duration" value="{{ config.display_duration }}" min="1" max="3600"></div>
       <div class="setting-row"><label>Übergang</label><select id="transition"><option value="fade"{% if config.transition=="fade" %} selected{% endif %}>Fade</option><option value="slide"{% if config.transition=="slide" %} selected{% endif %}>Slide</option><option value="none"{% if config.transition=="none" %} selected{% endif %}>Keiner</option></select></div>
-      <div class="setting-row"><label class="check-label"><input type="checkbox" id="shuffle"{% if config.shuffle %} checked{% endif %}> Zufallswiedergabe</label></div>
-      <div class="setting-row"><label class="check-label"><input type="checkbox" id="showClock"{% if config.show_clock %} checked{% endif %}> Uhr anzeigen</label></div>
-      <div class="setting-row"><label class="check-label"><input type="checkbox" id="showFilename"{% if config.show_filename %} checked{% endif %}> Dateiname anzeigen</label></div>
-      <button onclick="saveSettings()" class="btn">💾 Speichern</button>
+      <label class="switch-row"><span class="switch"><input type="checkbox" id="shuffle"{% if config.shuffle %} checked{% endif %}><span class="switch-track"><span class="switch-thumb"></span></span></span><span class="switch-label">Zufallswiedergabe</span></label>
+      <label class="switch-row"><span class="switch"><input type="checkbox" id="showClock"{% if config.show_clock %} checked{% endif %}><span class="switch-track"><span class="switch-thumb"></span></span></span><span class="switch-label">Uhr anzeigen</span></label>
+      <label class="switch-row"><span class="switch"><input type="checkbox" id="showFilename"{% if config.show_filename %} checked{% endif %}><span class="switch-track"><span class="switch-thumb"></span></span></span><span class="switch-label">Dateiname anzeigen</span></label>
+      <label class="switch-row"><span class="switch"><input type="checkbox" id="kenBurns"{% if config.ken_burns %} checked{% endif %}><span class="switch-track"><span class="switch-thumb"></span></span></span><span class="switch-label">Ken-Burns-Effekt</span></label>
+      <div style="margin-top:1.1rem"><button onclick="saveSettings()" class="btn btn-accent">💾 Speichern</button></div>
     </div>
     <div class="card">
-      <h3>🎨 Player-Hintergrund</h3>
+      <h3><span class="ic">🖥️</span> Layout</h3>
+      <div class="layout-grid" id="layoutGrid">
+        <div class="layout-option{% if not config.layout or config.layout=='fullscreen' %} active{% endif %}" onclick="setLayout('fullscreen')">
+          <div class="diagram"><div class="z z-main" style="width:100%"></div></div>
+          <span>Vollbild</span>
+        </div>
+        <div class="layout-option{% if config.layout=='main_ticker' %} active{% endif %}" onclick="setLayout('main_ticker')">
+          <div class="diagram" style="flex-direction:column"><div class="z z-main" style="height:74%"></div><div class="z" style="height:26%"></div></div>
+          <span>Haupt + Ticker</span>
+        </div>
+        <div class="layout-option{% if config.layout=='main_sidebar' %} active{% endif %}" onclick="setLayout('main_sidebar')">
+          <div class="diagram"><div class="z z-main" style="width:70%"></div><div class="z" style="width:30%"></div></div>
+          <span>Haupt + Seite</span>
+        </div>
+        <div class="layout-option{% if config.layout=='split_2up' %} active{% endif %}" onclick="setLayout('split_2up')">
+          <div class="diagram"><div class="z z-main" style="width:50%"></div><div class="z" style="width:50%"></div></div>
+          <span>2er-Split</span>
+        </div>
+      </div>
+      <p class="hint">Bei Split-Layouts kannst du pro Medium unter ⏰ einen Bereich (Haupt/Sekundär) zuweisen.</p>
+    </div>
+    <div class="card">
+      <h3><span class="ic">🎨</span> Player-Hintergrund</h3>
       <div class="setting-row"><label>Farbe</label><input type="color" id="bgColor" value="{{ config.background_color or '#000000' }}"></div>
       <div class="setting-row"><label>Hintergrundbild</label><select id="bgImage"><option value="">– Kein Bild –</option>{% for m in media %}{% if m.type=="image" %}<option value="{{ m.filename }}"{% if config.background_image==m.filename %} selected{% endif %}>{{ m.filename }}</option>{% endif %}{% endfor %}</select></div>
-      <div class="btn-row"><button onclick="saveBg()" class="btn">💾 Speichern</button><button onclick="resetBg()" class="btn" style="background:#888">Zurücksetzen</button></div>
+      <div class="btn-row"><button onclick="saveBg()" class="btn btn-accent">💾 Speichern</button><button onclick="resetBg()" class="btn" style="background:var(--ink-faint)">Zurücksetzen</button></div>
     </div>
     <div class="card">
-      <h3>🔑 Passwort ändern</h3>
+      <h3><span class="ic">🔑</span> Passwort ändern</h3>
       <div class="setting-row"><label>Neues Passwort (min. 8 Zeichen)</label><div class="pw-row"><input type="password" id="adminPassword" placeholder="••••••"><button onclick="changePw()" class="btn">Speichern</button></div><div class="pw-msg" id="pwMsg"></div></div>
     </div>
   </aside>
 </div>
+
+<!-- Text-Slide Modal -->
+<div class="modal-overlay" id="textSlideModal">
+  <div class="modal">
+    <h3 id="tsModalTitle">✍️ Text-Slide erstellen</h3>
+    <input type="hidden" id="tsEditId" value="">
+    <label class="field-label">Text (max. 280 Zeichen)</label>
+    <textarea id="tsText" maxlength="280" placeholder="z. B. Heute geschlossen – Inventur"></textarea>
+    <div class="row2">
+      <div><label class="field-label">Hintergrundfarbe</label><input type="color" id="tsBg" value="#111827" style="width:100%;height:38px;border:1.5px solid var(--line);border-radius:8px;padding:2px;cursor:pointer"></div>
+      <div><label class="field-label">Textfarbe</label><input type="color" id="tsColor" value="#ffffff" style="width:100%;height:38px;border:1.5px solid var(--line);border-radius:8px;padding:2px;cursor:pointer"></div>
+    </div>
+    <label class="field-label">Icon / Emoji (optional)</label>
+    <input type="text" id="tsIcon" maxlength="8" placeholder="z. B. 🚫 oder ☕">
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('textSlideModal')">Abbrechen</button>
+      <button class="btn btn-accent" onclick="submitTextSlide()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule Modal -->
+<div class="modal-overlay" id="scheduleModal">
+  <div class="modal">
+    <h3>⏰ Zeitplan & Ablauf</h3>
+    <input type="hidden" id="schKey" value="">
+    <label class="field-label">Bereich (nur bei Split-Layouts relevant)</label>
+    <select id="schZone"><option value="main">Haupt</option><option value="secondary">Sekundär</option></select>
+    <label class="field-label">Wochentage (leer = jeden Tag)</label>
+    <div class="weekdays">
+      <label>Mo<input type="checkbox" class="wd" value="0"></label>
+      <label>Di<input type="checkbox" class="wd" value="1"></label>
+      <label>Mi<input type="checkbox" class="wd" value="2"></label>
+      <label>Do<input type="checkbox" class="wd" value="3"></label>
+      <label>Fr<input type="checkbox" class="wd" value="4"></label>
+      <label>Sa<input type="checkbox" class="wd" value="5"></label>
+      <label>So<input type="checkbox" class="wd" value="6"></label>
+    </div>
+    <div class="row2">
+      <div><label class="field-label">Von</label><input type="time" id="schStart"></div>
+      <div><label class="field-label">Bis</label><input type="time" id="schEnd"></div>
+    </div>
+    <div class="hint">Beide Uhrzeiten leer lassen = ganztägig</div>
+    <label class="field-label">Ablaufdatum (optional)</label>
+    <input type="date" id="schExpires">
+    <div class="hint">Danach wird das Element automatisch aus der Wiedergabe genommen (bleibt aber in der Verwaltung sichtbar)</div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="clearSchedule()">🗑️ Entfernen</button>
+      <button class="btn btn-cancel" onclick="closeModal('scheduleModal')">Abbrechen</button>
+      <button class="btn btn-accent" onclick="saveSchedule()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ITEM_SCHEDULES = {{ config.item_schedule | tojson }};
+const TEXT_SLIDES = {{ config.text_slides | tojson }};
+const ITEM_ZONES = {{ config.item_zone | tojson }};
+</script>
 
 <script>
 "use strict";const BASE=location.origin;let dragSrc=null;
@@ -158,14 +363,92 @@ document.querySelectorAll(".media-item").forEach(it=>{
 async function reorder(from,to){const names=[...document.querySelectorAll(".media-item")].map(el=>el.dataset.filename);const[m]=names.splice(from,1);names.splice(to,0,m);try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({playlist:names})});if((await r.json()).status==="ok"){t("↕ Gespeichert");location.reload()}else t("❌ Fehler",1)}catch(e){t("❌ Verbindung",1)}}
 
 // Settings
-async function saveSettings(){try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({display_duration:+document.getElementById("duration").value||8,transition:document.getElementById("transition").value,shuffle:document.getElementById("shuffle").checked,show_clock:document.getElementById("showClock").checked,show_filename:document.getElementById("showFilename").checked})});t((await r.json()).status==="ok"?"💾 Gespeichert":"❌ Fehler")}catch(e){t("❌ Verbindung",1)}}
+async function saveSettings(){try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({display_duration:+document.getElementById("duration").value||8,transition:document.getElementById("transition").value,shuffle:document.getElementById("shuffle").checked,show_clock:document.getElementById("showClock").checked,show_filename:document.getElementById("showFilename").checked,ken_burns:document.getElementById("kenBurns").checked})});t((await r.json()).status==="ok"?"💾 Gespeichert":"❌ Fehler")}catch(e){t("❌ Verbindung",1)}}
+
+// Layout
+async function setLayout(layout){try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({layout})});if((await r.json()).status==="ok"){t("🖥️ Layout gespeichert");location.reload()}else t("❌ Fehler",1)}catch(e){t("❌ Verbindung",1)}}
+
+// Text-Slide Modal
+function openTextSlideModal(editId){
+  const m=document.getElementById("textSlideModal");
+  document.getElementById("tsEditId").value=editId||"";
+  if(editId&&TEXT_SLIDES[editId]){
+    const s=TEXT_SLIDES[editId];
+    document.getElementById("tsModalTitle").textContent="✏️ Text-Slide bearbeiten";
+    document.getElementById("tsText").value=s.text||"";
+    document.getElementById("tsBg").value=s.bg_color||"#111827";
+    document.getElementById("tsColor").value=s.text_color||"#ffffff";
+    document.getElementById("tsIcon").value=s.icon||"";
+  }else{
+    document.getElementById("tsModalTitle").textContent="✍️ Text-Slide erstellen";
+    document.getElementById("tsText").value="";document.getElementById("tsBg").value="#111827";
+    document.getElementById("tsColor").value="#ffffff";document.getElementById("tsIcon").value="";
+  }
+  m.classList.add("show");
+}
+async function submitTextSlide(){
+  const text=document.getElementById("tsText").value.trim();
+  if(!text){t("❌ Text darf nicht leer sein",1);return}
+  const editId=document.getElementById("tsEditId").value;
+  const body={text,bg_color:document.getElementById("tsBg").value,text_color:document.getElementById("tsColor").value,icon:document.getElementById("tsIcon").value};
+  try{
+    const url=editId?BASE+"/api/text-slide/"+editId:BASE+"/api/text-slide";
+    const r=await fetch(url,{method:editId?"PUT":"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.status==="ok"){t(editId?"✏️ Aktualisiert":"✅ Text-Slide erstellt");closeModal("textSlideModal");setTimeout(()=>location.reload(),900)}
+    else t("❌ "+(d.message||"Fehler"),1);
+  }catch(e){t("❌ Verbindung",1)}
+}
+
+// Schedule Modal
+function openSchedule(key){
+  document.getElementById("schKey").value=key;
+  document.querySelectorAll(".wd").forEach(cb=>cb.checked=false);
+  document.getElementById("schStart").value="";document.getElementById("schEnd").value="";document.getElementById("schExpires").value="";
+  document.getElementById("schZone").value=ITEM_ZONES[key]||"main";
+  const rule=ITEM_SCHEDULES[key];
+  if(rule){
+    if(rule.days)document.querySelectorAll(".wd").forEach(cb=>{if(rule.days.includes(+cb.value))cb.checked=true});
+    if(rule.start)document.getElementById("schStart").value=rule.start;
+    if(rule.end)document.getElementById("schEnd").value=rule.end;
+    if(rule.expires)document.getElementById("schExpires").value=rule.expires;
+  }
+  document.getElementById("scheduleModal").classList.add("show");
+}
+async function saveSchedule(){
+  const key=document.getElementById("schKey").value;
+  const days=[...document.querySelectorAll(".wd:checked")].map(cb=>+cb.value);
+  const body={zone:document.getElementById("schZone").value};
+  if(days.length)body.days=days;
+  const start=document.getElementById("schStart").value,end=document.getElementById("schEnd").value;
+  if(start&&end){body.start=start;body.end=end}
+  const expires=document.getElementById("schExpires").value;
+  if(expires)body.expires=expires;
+  try{
+    const r=await fetch(BASE+"/api/schedule/"+key,{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.status==="ok"){t("⏰ Zeitplan gespeichert");closeModal("scheduleModal");setTimeout(()=>location.reload(),900)}
+    else t("❌ "+(d.message||"Fehler"),1);
+  }catch(e){t("❌ Verbindung",1)}
+}
+async function clearSchedule(){
+  const key=document.getElementById("schKey").value;
+  try{
+    const r=await fetch(BASE+"/api/schedule/"+key,{method:"DELETE",credentials:"include"});
+    const d=await r.json();
+    if(d.status==="ok"){t("🗑️ Zeitplan entfernt");closeModal("scheduleModal");setTimeout(()=>location.reload(),900)}
+    else t("❌ Fehler",1);
+  }catch(e){t("❌ Verbindung",1)}
+}
+function closeModal(id){document.getElementById(id).classList.remove("show")}
+document.querySelectorAll(".modal-overlay").forEach(ov=>ov.addEventListener("click",e=>{if(e.target===ov)ov.classList.remove("show")}));
 
 // Background
 async function saveBg(){try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({background_color:document.getElementById("bgColor").value,background_image:document.getElementById("bgImage").value})});t((await r.json()).status==="ok"?"🎨 Gespeichert":"❌ Fehler")}catch(e){t("❌ Verbindung",1)}}
 async function resetBg(){document.getElementById("bgColor").value="#000000";document.getElementById("bgImage").value="";await saveBg();t("🎨 Zurückgesetzt")}
 
 // Password
-async function changePw(){const pw=document.getElementById("adminPassword").value,m=document.getElementById("pwMsg");if(pw.length<8){m.textContent="❌ Min. 8 Zeichen";m.style.color="red";return}try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({admin_password:pw})}),d=await r.json();if(d.status==="ok"){m.innerHTML="✅ Geändert";m.style.color="green";document.getElementById("adminPassword").value="";setTimeout(()=>location.reload(),1000)}else{m.innerHTML="❌ "+(d.message||"Fehler");m.style.color="red"}}catch(e){m.innerHTML="❌ Verbindung";m.style.color="red"}}
+async function changePw(){const pw=document.getElementById("adminPassword").value,m=document.getElementById("pwMsg");if(pw.length<8){m.textContent="❌ Min. 8 Zeichen";m.style.color="var(--danger)";return}try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({admin_password:pw})}),d=await r.json();if(d.status==="ok"){m.innerHTML="✅ Geändert";m.style.color="var(--success)";document.getElementById("adminPassword").value="";setTimeout(()=>location.reload(),1000)}else{m.innerHTML="❌ "+(d.message||"Fehler");m.style.color="var(--danger)"}}catch(e){m.innerHTML="❌ Verbindung";m.style.color="var(--danger)"}}
 
 // Copy URL
 function copyUrl(u){navigator.clipboard.writeText(u).then(()=>t("📋 Kopiert"))}

@@ -9,23 +9,41 @@
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;
   font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
-/* ── Slides Container ── */
-#player{position:fixed;top:0;left:0;width:100vw;height:100vh;
-  display:flex;align-items:center;justify-content:center}
+/* ── Layout-Container: teilt den Screen je nach gewähltem Layout in 1 oder 2 Zonen ── */
+#player{position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex}
+#player.layout-fullscreen{display:flex}
+#player.layout-main_ticker{flex-direction:column}
+#player.layout-main_sidebar,#player.layout-split_2up{flex-direction:row}
+.zone{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:1}
+#player.layout-main_ticker .zone-main{flex:0 0 74%}
+#player.layout-main_ticker .zone-secondary{flex:0 0 26%;border-top:1px solid rgba(255,255,255,.12)}
+#player.layout-main_sidebar .zone-main{flex:0 0 70%}
+#player.layout-main_sidebar .zone-secondary{flex:0 0 30%;border-left:1px solid rgba(255,255,255,.12)}
+#player.layout-split_2up .zone-main,#player.layout-split_2up .zone-secondary{flex:0 0 50%}
+#player.layout-split_2up .zone-secondary{border-left:1px solid rgba(255,255,255,.12)}
+/* ── Slides ── */
 .slide{position:absolute;top:0;left:0;width:100%;height:100%;
   display:flex;align-items:center;justify-content:center;overflow:hidden}
 .slide img,.slide video{max-width:100%;max-height:100%;object-fit:contain}
+/* ── Ken-Burns (sanftes Zoomen bei Standbildern) ── */
+@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.08)}}
+.slide img.kenburns{animation:kenburns var(--kb-duration,8s) ease-in-out forwards}
+/* ── Text-Slide-Karte (Schriftgröße wird per JS an die Zonengröße angepasst) ── */
+.text-card{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1rem;padding:6%;text-align:center}
+.text-card .tc-icon{line-height:1}
+.text-card .tc-text{font-weight:700;line-height:1.3;max-width:92%;word-break:break-word}
 /* ── Fade ── */
-#player.fade .slide{opacity:0;transition:opacity 1s ease-in-out;will-change:opacity}
-#player.fade .slide.active{opacity:1;z-index:1}
+.zone.fade .slide{opacity:0;transition:opacity 1s ease-in-out;will-change:opacity}
+.zone.fade .slide.active{opacity:1;z-index:1}
 /* ── Slide (left←right) ── */
-#player.slide .slide{opacity:0;transform:translateX(100%);
+.zone.slide .slide{opacity:0;transform:translateX(100%);
   transition:transform .7s cubic-bezier(.4,0,.2,1),opacity .7s cubic-bezier(.4,0,.2,1);will-change:transform,opacity}
-#player.slide .slide.active{opacity:1;transform:translateX(0);z-index:1}
-#player.slide .slide.active.exit-left{opacity:0;transform:translateX(-30%);z-index:0}
+.zone.slide .slide.active{opacity:1;transform:translateX(0);z-index:1}
+.zone.slide .slide.active.exit-left{opacity:0;transform:translateX(-30%);z-index:0}
 /* ── None ── */
-#player.none .slide{opacity:0;transition:none}
-#player.none .slide.active{opacity:1;z-index:1}
+.zone.none .slide{opacity:0;transition:none}
+.zone.none .slide.active{opacity:1;z-index:1}
 /* ── Clock ── */
 #clock{position:fixed;bottom:2rem;right:2rem;
   color:rgba(255,255,255,.55);font-size:1.1rem;
@@ -38,14 +56,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
   color:rgba(255,255,255,.3);font-size:.85rem;z-index:10;
   pointer-events:none;transition:opacity .5s}
 #filename.hidden{opacity:0}
-/* ── Loading ── */
-.no-media{color:#555;font-size:1.5rem;font-weight:300}
+/* ── Leerer Zustand ── */
+.no-media{color:#555;font-size:1.3rem;font-weight:300;padding:1rem;text-align:center}
 </style>
 </head>
 <body>
-<div id="player" class="fade">
-  <div class="no-media" id="noMedia">📺 Keine Medien</div>
-</div>
+<div id="player" class="layout-fullscreen"></div>
 <div id="clock"></div>
 <div id="filename" class="hidden"></div>
 
@@ -56,64 +72,119 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 const player=document.getElementById('player');
 const clockEl=document.getElementById('clock');
 const fnEl=document.getElementById('filename');
-let items=[],currentIndex=0,displayDuration=8,timer=null,transitionMode='fade',isTransitioning=false;
+let showClock=true,showFilename=false;
 
-let showClock=true,showFilename=false,bgColor='#000000',bgImage='';
 function updateClock(){clockEl.innerHTML=new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})+'<br>'+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
 updateClock();setInterval(updateClock,10000);
 
-async function loadPlaylist(){try{const r=await fetch('/api/player/next');const d=await r.json();const newItems=d.items||[];displayDuration=d.display_duration||8;
-  transitionMode=d.transition||'fade';player.className=transitionMode;showClock=d.show_clock!==false;showFilename=d.show_filename||false;
-  clockEl.classList.toggle('hidden',!showClock);bgColor=d.background_color||'#000000';bgImage=d.background_image||'';player.style.background=bgImage?'url(/media/'+encodeURIComponent(bgImage)+') center/cover no-repeat':bgColor;
-  // Läuft bereits dieselbe Playlist (gleiche Dateien, gleiche Reihenfolge)? Dann Slideshow
-  // nicht neu aufbauen – sonst würde jeder periodische Refresh (alle 5 Min.) die laufende
-  // Wiedergabe/ein laufendes Video abrupt unterbrechen und auf Slide 1 zurückspringen.
-  const unchanged=items.length===newItems.length&&items.every((it,i)=>it.filename===newItems[i].filename&&it.type===newItems[i].type);
-  if(unchanged&&items.length){fnEl.classList.toggle('hidden',!showFilename);return}
-  items=newItems;
-  const nc=document.getElementById('noMedia');if(nc)nc.remove();
-  if(!items.length){const e=document.createElement('div');e.className='no-media';e.id='noMedia';e.textContent='📺 Keine Medien';player.appendChild(e);return}
-  const existing=player.querySelectorAll('.slide');existing.forEach(el=>el.remove());
-  currentIndex=0;isTransitioning=false;
-  items.forEach((item,i)=>{const s=document.createElement('div');s.className='slide';s.id='slide-'+i;
-    if(item.type==='video'){const v=document.createElement('video');v.src=item.url;
-      v.muted=true;v.playsInline=true;v.loop=false;v.preload='auto';v.setAttribute('playsinline','');
-      v.addEventListener('ended',()=>goNext());
-      v.addEventListener('error',()=>{console.warn('Video error');setTimeout(goNext,2000)});
-      s.appendChild(v)}else{const img=document.createElement('img');img.src=item.url;
-        img.alt=item.filename;img.loading='lazy';s.appendChild(img)}
-    player.appendChild(s)});
-  setTimeout(()=>showSlide(0),100)}catch(e){console.error(e);setTimeout(loadPlaylist,3000)}}
+// ── Zonen-Player: eine unabhängige Mini-Slideshow innerhalb eines Zonen-Elements.
+// Vollbild-Layout nutzt genau EINE Instanz ("main") -- exakt dieselbe Logik wie
+// zuvor, nur pro Zone gekapselt statt in globalen Variablen. Split-Layouts
+// starten eine zweite, komplett unabhängige Instanz ("secondary") mit eigenem
+// Timer, eigenem Fortschritt, eigener Playlist.
+function createZone(el,key){
+  let items=[],currentIndex=0,displayDuration=8,transitionMode='fade',isTransitioning=false,timer=null,kenBurns=false;
 
-function showSlide(idx){if(isTransitioning)return;
-  const old=document.querySelector('#slide-'+currentIndex);
-  if(old&&old.classList.contains('active')){
-    if(transitionMode==='slide'){isTransitioning=true;old.classList.add('exit-left');
-      setTimeout(()=>{old.classList.remove('active','exit-left');isTransitioning=false},700)}
-    else old.classList.remove('active')}
-  currentIndex=idx;const slide=document.querySelector('#slide-'+currentIndex);
-  if(!slide){if(items.length)scheduleNext();return}
-  if(transitionMode==='slide')void slide.offsetWidth;
-  slide.classList.add('active');
-  // Filename
-  fnEl.textContent=items[idx]?items[idx].filename:'';
-  fnEl.classList.toggle('hidden',!showFilename);
-  // Preload next
-  const nxt=(idx+1)%items.length;
-  if(items[nxt]&&items[nxt].type==='image'){const img=new Image();img.src=items[nxt].url}
-  // Video play
-  const video=slide.querySelector('video');
-  if(video){video.currentTime=0;const p=video.play();p&&p.catch&&p.catch(()=>setTimeout(goNext,2000));return}
-  scheduleNext()}
+  function sizeTextCard(slideEl){
+    const card=slideEl.querySelector('.text-card');if(!card)return;
+    const w=el.clientWidth||1,h=el.clientHeight||1;
+    const fs=Math.max(14,Math.min(h*0.18,w*0.09));
+    const tx=card.querySelector('.tc-text');if(tx)tx.style.fontSize=fs+'px';
+    const ic=card.querySelector('.tc-icon');if(ic)ic.style.fontSize=(fs*1.5)+'px';
+  }
 
-function scheduleNext(){clearTimeout(timer);timer=setTimeout(goNext,displayDuration*1000)}
-function goNext(){if(items.length)showSlide((currentIndex+1)%items.length)}
-function nextIndex(){return(currentIndex+1)%items.length}
+  function setState(newItems,duration,transition,kb){
+    displayDuration=duration;transitionMode=transition;kenBurns=kb;
+    el.className='zone zone-'+key+' '+transitionMode;
+    // Läuft bereits dieselbe Playlist (gleiche Dateien, gleiche Reihenfolge)? Dann
+    // nicht neu aufbauen -- sonst würde jeder periodische Refresh (alle 5 Min.) die
+    // laufende Wiedergabe/ein laufendes Video abrupt unterbrechen und auf Slide 1
+    // zurückspringen.
+    const unchanged=items.length===newItems.length&&items.every((it,i)=>it.filename===newItems[i].filename&&it.type===newItems[i].type);
+    if(unchanged&&items.length)return;
+    clearTimeout(timer);
+    items=newItems;
+    el.querySelectorAll('.slide,.no-media').forEach(n=>n.remove());
+    if(!items.length){const e=document.createElement('div');e.className='no-media';e.textContent='📺 Keine Medien';el.appendChild(e);return}
+    currentIndex=0;isTransitioning=false;
+    items.forEach((item,i)=>{const s=document.createElement('div');s.className='slide';s.dataset.idx=i;
+      if(item.type==='video'){const v=document.createElement('video');v.src=item.url;
+        v.muted=true;v.playsInline=true;v.loop=false;v.preload='auto';v.setAttribute('playsinline','');
+        v.addEventListener('ended',()=>goNext());
+        v.addEventListener('error',()=>{console.warn('Video error');setTimeout(goNext,2000)});
+        s.appendChild(v)}else if(item.type==='text'){const card=document.createElement('div');card.className='text-card';
+          card.style.background=item.bg_color||'#111827';card.style.color=item.text_color||'#ffffff';
+          if(item.icon){const ic=document.createElement('div');ic.className='tc-icon';ic.textContent=item.icon;card.appendChild(ic)}
+          const tx=document.createElement('div');tx.className='tc-text';tx.textContent=item.text||'';card.appendChild(tx);
+          s.appendChild(card)}else{const img=document.createElement('img');img.src=item.url;
+          img.alt=item.filename;img.loading='lazy';s.appendChild(img)}
+      el.appendChild(s)});
+    setTimeout(()=>showSlide(0),100)}
+
+  function showSlide(idx){if(isTransitioning)return;
+    const old=el.querySelector('.slide[data-idx="'+currentIndex+'"]');
+    if(old&&old.classList.contains('active')){
+      if(transitionMode==='slide'){isTransitioning=true;old.classList.add('exit-left');
+        setTimeout(()=>{old.classList.remove('active','exit-left');isTransitioning=false},700)}
+      else old.classList.remove('active')}
+    currentIndex=idx;const slide=el.querySelector('.slide[data-idx="'+currentIndex+'"]');
+    if(!slide){if(items.length)scheduleNext();return}
+    if(transitionMode==='slide')void slide.offsetWidth;
+    slide.classList.add('active');
+    sizeTextCard(slide);
+    if(kenBurns){const img=slide.querySelector('img');
+      if(img){img.classList.remove('kenburns');void img.offsetWidth;img.style.setProperty('--kb-duration',displayDuration+'s');img.classList.add('kenburns')}}
+    // Dateiname-Overlay zeigt nur, was in der Hauptzone läuft
+    if(key==='main'){
+      fnEl.textContent=(items[idx]&&items[idx].type!=='text')?items[idx].filename:'';
+      fnEl.classList.toggle('hidden',!showFilename);
+    }
+    const nxt=(idx+1)%items.length;
+    if(items[nxt]&&items[nxt].type==='image'){const img=new Image();img.src=items[nxt].url}
+    const video=slide.querySelector('video');
+    if(video){video.currentTime=0;const p=video.play();p&&p.catch&&p.catch(()=>setTimeout(goNext,2000));return}
+    scheduleNext()}
+
+  function scheduleNext(){clearTimeout(timer);timer=setTimeout(goNext,displayDuration*1000)}
+  function goNext(){if(items.length)showSlide((currentIndex+1)%items.length)}
+
+  return{setState,next:()=>{clearTimeout(timer);goNext()}}}
+
+// ── Orchestrierung: legt je nach Layout 1 oder 2 Zonen-Elemente an ──
+let zoneMain=null,zoneSecondary=null,currentLayout=null;
+
+function ensureZones(layout){
+  if(layout===currentLayout)return;
+  currentLayout=layout;
+  player.className='layout-'+layout;
+  player.innerHTML='';
+  const mainEl=document.createElement('div');mainEl.className='zone zone-main';player.appendChild(mainEl);
+  zoneMain=createZone(mainEl,'main');
+  if(layout==='fullscreen'){zoneSecondary=null}
+  else{const secEl=document.createElement('div');secEl.className='zone zone-secondary';player.appendChild(secEl);
+    zoneSecondary=createZone(secEl,'secondary')}
+}
+
+async function loadPlaylist(){try{
+  const r=await fetch('/api/player/next');const d=await r.json();
+  const layout=(['fullscreen','main_ticker','main_sidebar','split_2up'].includes(d.layout))?d.layout:'fullscreen';
+  ensureZones(layout);
+  showClock=d.show_clock!==false;showFilename=d.show_filename||false;
+  clockEl.classList.toggle('hidden',!showClock);
+  const bgColor=d.background_color||'#000000',bgImage=d.background_image||'';
+  player.style.background=bgImage?'url(/media/'+encodeURIComponent(bgImage)+') center/cover no-repeat':bgColor;
+
+  const byZone={main:[],secondary:[]};
+  (d.items||[]).forEach(it=>{byZone[it.zone==='secondary'?'secondary':'main'].push(it)});
+  const duration=d.display_duration||8,transition=d.transition||'fade',kb=d.ken_burns||false;
+  zoneMain.setState(byZone.main,duration,transition,kb);
+  if(zoneSecondary)zoneSecondary.setState(byZone.secondary,duration,transition,kb);
+}catch(e){console.error(e);setTimeout(loadPlaylist,3000)}}
 
 loadPlaylist();
 setInterval(loadPlaylist,5*60*1000);
 
-document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();clearTimeout(timer);goNext()}});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();zoneMain&&zoneMain.next()}});
 
 })();
 </script>

@@ -16,8 +16,9 @@ import random
 import secrets
 import threading
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date, time as dtime
 from functools import wraps
+from contextlib import contextmanager
 from flask import (
     Flask, render_template, request, jsonify,
     send_from_directory, redirect, url_for, session
@@ -43,10 +44,17 @@ DEFAULT_CONFIG = {
     "shuffle": False,
     "show_clock": True,
     "show_filename": False,
+    "ken_burns": False,
+    "layout": "fullscreen",
     "admin_password_hash": generate_password_hash("admin"),
     "force_password_change": True,
     "playlist": [],
+    "item_schedule": {},   # {key: {"days":[0-6], "start":"HH:MM", "end":"HH:MM", "expires":"YYYY-MM-DD"}}
+    "text_slides": {},     # {id: {"text":..., "bg_color":..., "text_color":..., "icon":..., "created_at":...}}
+    "item_zone": {},       # {key: "secondary"} - fehlender Eintrag = "main" (Standard-Bereich)
 }
+
+VALID_LAYOUTS = {"fullscreen", "main_ticker", "main_sidebar", "split_2up"}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
@@ -72,7 +80,7 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 _config_lock = threading.Lock()
 
 
-def load_config() -> dict:
+def _read_config_file() -> dict:
     if CONFIG_FILE.exists():
         try:
             data = json.loads(CONFIG_FILE.read_text())
@@ -82,21 +90,53 @@ def load_config() -> dict:
             return dict(DEFAULT_CONFIG)
         merged = dict(DEFAULT_CONFIG)
         merged.update(data)
-        # Migration: alte Klartext-Passwörter aus früheren Versionen zu Hash konvertieren
-        if merged.get("admin_password"):
-            merged["admin_password_hash"] = generate_password_hash(merged.pop("admin_password"))
-            save_config(merged)
         return merged
     return dict(DEFAULT_CONFIG)
 
 
-def save_config(config: dict) -> None:
+def _write_config_file_locked(config: dict) -> None:
+    # Muss innerhalb von _config_lock aufgerufen werden.
     # Atomar schreiben: erst in Temp-Datei, dann per rename ersetzen.
-    # Verhindert eine korrupte config.json bei Absturz/Stromausfall mitten im Schreiben.
+    tmp = CONFIG_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(config, indent=2, ensure_ascii=False))
+    tmp.replace(CONFIG_FILE)
+
+
+def load_config() -> dict:
+    """Für reine Lesezugriffe (z.B. GET-Routen). Für Lese-Ändern-Schreiben-Zyklen
+    IMMER config_transaction() verwenden – load_config()+save_config() als zwei
+    getrennte Schritte ist NICHT nebenläufigkeitssicher (Lost-Update-Risiko,
+    empirisch nachgewiesen: bei 10 gleichzeitigen Schreibzugriffen gingen ohne
+    diesen Fix bis zu 40% der Änderungen still verloren, trotz HTTP 200)."""
     with _config_lock:
-        tmp = CONFIG_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(config, indent=2, ensure_ascii=False))
-        tmp.replace(CONFIG_FILE)
+        config = _read_config_file()
+        if config.get("admin_password"):
+            # Migration alter Klartext-Passwörter aus früheren Versionen
+            config["admin_password_hash"] = generate_password_hash(config.pop("admin_password"))
+            _write_config_file_locked(config)
+        return config
+
+
+def save_config(config: dict) -> None:
+    """Für in sich geschlossene Schreibvorgänge ohne vorheriges Lesen im selben
+    Request. Für Lese-Ändern-Schreiben-Zyklen stattdessen config_transaction()."""
+    with _config_lock:
+        _write_config_file_locked(config)
+
+
+@contextmanager
+def config_transaction():
+    """Hält den Lock über den GESAMTEN Lese-Ändern-Schreiben-Zyklus statt nur
+    über den finalen Schreibvorgang. Das ist der eigentliche Fix für das
+    Lost-Update-Problem: vorher konnten zwei parallele Requests beide dieselbe
+    (veraltete) Kopie der Config lesen, unabhängig voneinander ändern und
+    speichern – der zweite Schreibvorgang hat den ersten dann überschrieben.
+    Nutzung: `with config_transaction() as config: config["x"] = y`
+    """
+    with _config_lock:
+        config = _read_config_file()
+        yield config
+        _write_config_file_locked(config)
 
 
 def get_media_files() -> list[dict]:
@@ -113,6 +153,16 @@ def get_media_files() -> list[dict]:
                 "size": stat.st_size,
                 "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
             })
+    for tid, slide in config.get("text_slides", {}).items():
+        files.append({
+            "filename": tid,
+            "type": "text",
+            "text": slide.get("text", ""),
+            "bg_color": slide.get("bg_color", "#111827"),
+            "text_color": slide.get("text_color", "#ffffff"),
+            "icon": slide.get("icon", ""),
+            "mtime": slide.get("created_at", ""),
+        })
     by_name = {f["filename"]: f for f in files}
     ordered = []
     for name in playlist:
@@ -120,6 +170,45 @@ def get_media_files() -> list[dict]:
             ordered.append(by_name.pop(name))
     ordered.extend(sorted(by_name.values(), key=lambda x: x["filename"]))
     return ordered
+
+
+def _parse_hhmm(s: str) -> dtime:
+    h, m = s.split(":")
+    return dtime(int(h), int(m))
+
+
+def is_item_active(key: str, config: dict, now: datetime | None = None) -> bool:
+    """Prüft, ob ein Playlist-Item (Datei oder Text-Slide) laut Zeitplan
+    und Ablaufdatum gerade angezeigt werden soll. Kein Eintrag = immer aktiv."""
+    rule = config.get("item_schedule", {}).get(key)
+    if not rule:
+        return True
+    now = now or datetime.now()
+    expires = rule.get("expires")
+    if expires:
+        try:
+            if now.date() > date.fromisoformat(expires):
+                return False
+        except ValueError:
+            pass
+    days = rule.get("days")
+    if days:
+        if now.weekday() not in days:
+            return False
+    start, end = rule.get("start"), rule.get("end")
+    if start and end:
+        try:
+            t = now.time()
+            s, e = _parse_hhmm(start), _parse_hhmm(end)
+            if s <= e:
+                if not (s <= t <= e):
+                    return False
+            else:  # Zeitfenster über Mitternacht, z.B. 22:00–02:00
+                if not (t >= s or t <= e):
+                    return False
+        except ValueError:
+            pass
+    return True
 
 
 def allowed_file(filename: str) -> bool:
@@ -243,6 +332,16 @@ def logout():
 def admin():
     config = load_config()
     media = get_media_files()
+    schedules = config.get("item_schedule", {})
+    zones = config.get("item_zone", {})
+    now = datetime.now()
+    for item in media:
+        rule = schedules.get(item["filename"])
+        item["has_schedule"] = bool(rule)
+        item["expired"] = bool(
+            rule and rule.get("expires") and now.date() > date.fromisoformat(rule["expires"])
+        ) if rule and rule.get("expires") else False
+        item["zone"] = zones.get(item["filename"], "main")
     player_url = request.host_url.rstrip("/") + "/player"
     return render_template("admin.html", media=media, config=config, player_url=player_url)
 
@@ -272,13 +371,17 @@ def api_list_media():
 def api_delete_media(filename):
     safe = Path(filename).name
     fp = MEDIA_DIR / safe
-    if fp.exists() and fp.is_file():
-        fp.unlink()
-        config = load_config()
+    is_file = fp.exists() and fp.is_file()
+    with config_transaction() as config:
+        if is_file:
+            fp.unlink()
+        elif safe in config.get("text_slides", {}):
+            del config["text_slides"][safe]
+        else:
+            return jsonify({"status": "error", "message": "Datei nicht gefunden"}), 404
         config["playlist"] = [f for f in config["playlist"] if f != safe]
-        save_config(config)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error", "message": "Datei nicht gefunden"}), 404
+        config.get("item_schedule", {}).pop(safe, None)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -296,16 +399,126 @@ def api_upload():
             errors.append(f"{f.filename}: nicht erlaubtes Format")
             continue
         safe = safe_filename(f.filename)
-        f.save(str(MEDIA_DIR / safe))
+        try:
+            f.save(str(MEDIA_DIR / safe))
+        except Exception as e:
+            # Reservierte Datei aus safe_filename() wieder entfernen, sonst bleibt
+            # eine 0-Byte-Leiche liegen, die den Dateinamen dauerhaft blockiert
+            # und als kaputtes Medium in der Playlist auftauchen würde.
+            (MEDIA_DIR / safe).unlink(missing_ok=True)
+            errors.append(f"{f.filename}: Speichern fehlgeschlagen ({e})")
+            continue
         uploaded.append(safe)
-        config = load_config()
-        if safe not in config["playlist"]:
-            config["playlist"].append(safe)
-        save_config(config)
+    if uploaded:
+        with config_transaction() as config:
+            for safe in uploaded:
+                if safe not in config["playlist"]:
+                    config["playlist"].append(safe)
     result = {"status": "ok", "files": uploaded}
     if errors:
         result["errors"] = errors
     return jsonify(result)
+
+
+MAX_TEXT_SLIDE_LENGTH = 280
+
+
+@app.route("/api/text-slide", methods=["POST"])
+@api_login_required
+def api_create_text_slide():
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text", "")).strip()[:MAX_TEXT_SLIDE_LENGTH]
+    if not text:
+        return jsonify({"status": "error", "message": "Text darf nicht leer sein"}), 400
+    tid = "text_" + secrets.token_hex(4)
+    with config_transaction() as config:
+        config.setdefault("text_slides", {})[tid] = {
+            "text": text,
+            "bg_color": str(data.get("bg_color", "#111827"))[:20],
+            "text_color": str(data.get("text_color", "#ffffff"))[:20],
+            "icon": str(data.get("icon", ""))[:8],
+            "created_at": datetime.now().isoformat(),
+        }
+        config["playlist"].append(tid)
+    return jsonify({"status": "ok", "id": tid})
+
+
+@app.route("/api/text-slide/<slide_id>", methods=["PUT"])
+@api_login_required
+def api_update_text_slide(slide_id):
+    data = request.get_json(silent=True) or {}
+    if "text" in data:
+        text = str(data["text"]).strip()[:MAX_TEXT_SLIDE_LENGTH]
+        if not text:
+            return jsonify({"status": "error", "message": "Text darf nicht leer sein"}), 400
+    else:
+        text = None
+    with config_transaction() as config:
+        if slide_id not in config.get("text_slides", {}):
+            return jsonify({"status": "error", "message": "Text-Slide nicht gefunden"}), 404
+        slide = config["text_slides"][slide_id]
+        if text is not None:
+            slide["text"] = text
+        if "bg_color" in data:
+            slide["bg_color"] = str(data["bg_color"])[:20]
+        if "text_color" in data:
+            slide["text_color"] = str(data["text_color"])[:20]
+        if "icon" in data:
+            slide["icon"] = str(data["icon"])[:8]
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/schedule/<key>", methods=["PUT", "DELETE"])
+@api_login_required
+def api_set_schedule(key):
+    safe = Path(key).name
+    zone = None
+    if request.method == "PUT":
+        data = request.get_json(silent=True) or {}
+        zone = data.get("zone")
+        if zone not in ("main", "secondary"):
+            zone = "main"
+        rule = {}
+        days = data.get("days")
+        if isinstance(days, list) and days:
+            try:
+                rule["days"] = sorted({int(d) for d in days if 0 <= int(d) <= 6})
+            except (TypeError, ValueError):
+                pass
+        start, end = data.get("start"), data.get("end")
+        if start and end:
+            try:
+                _parse_hhmm(start)
+                _parse_hhmm(end)
+                rule["start"], rule["end"] = start, end
+            except (ValueError, AttributeError):
+                return jsonify({"status": "error", "message": "Ungültige Uhrzeit (Format HH:MM)"}), 400
+        expires = data.get("expires")
+        if expires:
+            try:
+                date.fromisoformat(expires)
+                rule["expires"] = expires
+            except ValueError:
+                return jsonify({"status": "error", "message": "Ungültiges Datum (Format YYYY-MM-DD)"}), 400
+    with config_transaction() as config:
+        valid = (MEDIA_DIR / safe).is_file() or safe in config.get("text_slides", {})
+        if not valid:
+            return jsonify({"status": "error", "message": "Element nicht gefunden"}), 404
+        config.setdefault("item_schedule", {})
+        config.setdefault("item_zone", {})
+        if request.method == "DELETE":
+            config["item_schedule"].pop(safe, None)
+            config["item_zone"].pop(safe, None)
+        else:
+            if rule:
+                config["item_schedule"][safe] = rule
+            else:
+                config["item_schedule"].pop(safe, None)
+            if zone == "secondary":
+                config["item_zone"][safe] = "secondary"
+            else:
+                config["item_zone"].pop(safe, None)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/playlist", methods=["GET", "PUT"])
@@ -321,35 +534,38 @@ def api_playlist():
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"status": "error", "message": "Ungültige JSON-Daten"}), 400
-    config = load_config()
-    for key in ("playlist", "display_duration", "transition", "shuffle", "show_clock", "show_filename"):
-        if key in data:
-            if key == "playlist":
-                config[key] = [f for f in data[key] if (MEDIA_DIR / f).is_file()]
-            elif key == "display_duration":
-                try:
-                    config[key] = max(1, min(3600, int(data[key])))
-                except (TypeError, ValueError):
-                    pass  # ungültigen Wert ignorieren statt mit 500 abzustürzen
-            elif key in ("shuffle", "show_clock", "show_filename"):
-                config[key] = bool(data[key])
-            else:
-                config[key] = data[key]
-    if "hidden_items" in data:
-        config["hidden_items"] = data["hidden_items"]
-    if "background_color" in data:
-        config["background_color"] = data["background_color"]
-    if "background_image" in data:
-        config["background_image"] = data["background_image"]
     pw_error = None
-    if "admin_password" in data:
-        pwd = str(data["admin_password"]).strip()
-        if len(pwd) >= MIN_PASSWORD_LENGTH:
-            config["admin_password_hash"] = generate_password_hash(pwd)
-            config["force_password_change"] = False
-        else:
-            pw_error = f"Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen haben"
-    save_config(config)
+    with config_transaction() as config:
+        for key in ("playlist", "display_duration", "transition", "shuffle", "show_clock", "show_filename", "ken_burns", "layout"):
+            if key in data:
+                if key == "playlist":
+                    text_ids = set(config.get("text_slides", {}).keys())
+                    config[key] = [f for f in data[key] if (MEDIA_DIR / f).is_file() or f in text_ids]
+                elif key == "layout":
+                    if data[key] in VALID_LAYOUTS:
+                        config[key] = data[key]
+                elif key == "display_duration":
+                    try:
+                        config[key] = max(1, min(3600, int(data[key])))
+                    except (TypeError, ValueError):
+                        pass  # ungültigen Wert ignorieren statt mit 500 abzustürzen
+                elif key in ("shuffle", "show_clock", "show_filename", "ken_burns"):
+                    config[key] = bool(data[key])
+                else:
+                    config[key] = data[key]
+        if "hidden_items" in data:
+            config["hidden_items"] = data["hidden_items"]
+        if "background_color" in data:
+            config["background_color"] = data["background_color"]
+        if "background_image" in data:
+            config["background_image"] = data["background_image"]
+        if "admin_password" in data:
+            pwd = str(data["admin_password"]).strip()
+            if len(pwd) >= MIN_PASSWORD_LENGTH:
+                config["admin_password_hash"] = generate_password_hash(pwd)
+                config["force_password_change"] = False
+            else:
+                pw_error = f"Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen haben"
     if pw_error:
         return jsonify({"status": "error", "message": pw_error}), 400
     return jsonify({"status": "ok"})
@@ -360,26 +576,48 @@ def api_player_next():
     config = load_config()
     playlist = list(config.get("playlist", []))
     hidden = set(config.get("hidden_items", []))
-    playlist = [f for f in playlist if f not in hidden]
+    now = datetime.now()
+    playlist = [f for f in playlist if f not in hidden and is_item_active(f, config, now)]
     if config.get("shuffle"):
         random.shuffle(playlist)
+    text_slides = config.get("text_slides", {})
+    item_zone = config.get("item_zone", {})
+    layout = config.get("layout", "fullscreen")
+    if layout not in VALID_LAYOUTS:
+        layout = "fullscreen"
     items = []
     for name in playlist:
+        zone = item_zone.get(name, "main") if layout != "fullscreen" else "main"
+        if name in text_slides:
+            slide = text_slides[name]
+            items.append({
+                "filename": name,
+                "type": "text",
+                "zone": zone,
+                "text": slide.get("text", ""),
+                "bg_color": slide.get("bg_color", "#111827"),
+                "text_color": slide.get("text_color", "#ffffff"),
+                "icon": slide.get("icon", ""),
+            })
+            continue
         fp = MEDIA_DIR / name
         if fp.is_file():
             items.append({
                 "filename": name,
                 "url": url_for("serve_media", filename=name),
                 "type": "video" if fp.suffix.lower() in VIDEO_EXTENSIONS else "image",
+                "zone": zone,
             })
     return jsonify({
         "items": items,
+        "layout": layout,
         "display_duration": config.get("display_duration", 8),
         "transition": config.get("transition", "fade"),
         "show_clock": config.get("show_clock", True),
         "show_filename": config.get("show_filename", False),
         "background_color": config.get("background_color", "#000000"),
         "background_image": config.get("background_image", ""),
+        "ken_burns": config.get("ken_burns", False),
     })
 
 

@@ -2,6 +2,8 @@
 
 Kurzanleitung für alle, die Bilder/Videos für den Signage-Screen gestalten – z. B. in Canva, Photoshop oder PowerPoint. Kein technisches Wissen nötig, nur diese Punkte beachten.
 
+> 💡 **Für schnelle Textmeldungen** ("Heute geschlossen", "Tagessuppe: Kürbis 4,50 €") brauchst du gar kein Design-Tool – im Admin-Panel gibt es den Button **"✍️ Text-Slide erstellen"**, der direkt eine fertige Karte mit Text, Farbe & Icon erzeugt. Dieser Guide hier ist für alles, was mehr als reinen Text braucht (Fotos, Grafiken, Kampagnen).
+
 ---
 
 ## 1. Zuerst: Bildschirm-Format herausfinden
@@ -46,7 +48,24 @@ Faustregel: unteres rechtes Sechstel des Bildes eher ruhig/dunkel halten, keine 
 
 ---
 
-## 4. Datei-Format & Größe
+## 4. Split-Screen-Layouts – falls der Bildschirm geteilt ist
+
+Falls im Admin-Panel ein Layout wie "Haupt + Ticker" oder "Haupt + Seitenleiste" statt "Vollbild" gewählt ist, teilt sich der Bildschirm in zwei unabhängige Bereiche. Das ändert, wie du gestalten solltest:
+
+| Layout | Hauptbereich | Sekundärbereich |
+|---|---|---|
+| Haupt + Ticker | volle Breite, ca. 74% Höhe | volle Breite, schmaler Streifen unten (~26% Höhe) |
+| Haupt + Seitenleiste | ca. 70% Breite, volle Höhe | schmale Spalte rechts (~30% Breite) |
+| 2er-Split | 50% Breite | 50% Breite |
+
+- Inhalte für den **Sekundärbereich** (Ticker/Seitenleiste) sollten **kurz und einfach** sein – ein Satz, ein Preis, ein Hinweis. Die Schriftgröße wird automatisch an die Zonengröße angepasst, aber ein langer Absatz wirkt in einem schmalen Streifen trotzdem gequetscht.
+- Für den Sekundärbereich eignen sich **Text-Slides** (siehe Hinweis oben) oft besser als hochauflösende Fotos – die Zone ist meist zu klein, um Bilddetails zur Geltung zu bringen.
+- Bilder/Videos für den **Hauptbereich** in einem Split-Layout genauso gestalten wie für Vollbild – nur eben wissend, dass die Fläche etwas kleiner ist als der ganze Screen.
+- Welchem Bereich ein Element zugeordnet ist, legst du im Admin-Panel unter ⏰ pro Element fest (Feld "Bereich").
+
+---
+
+## 5. Datei-Format & Größe
 
 ### Bilder
 | Format | Wann verwenden |
@@ -63,7 +82,7 @@ Export-Qualität in Canva: **"Mittel"** reicht für Bildschirm-Darstellung völl
 
 ---
 
-## 5. Damit der Screen auch wirkt
+## 6. Damit der Screen auch wirkt
 
 - **Groß schreiben.** Faustregel: mindestens 1 cm Buchstabenhöhe pro 3 m Betrachtungsabstand. Lieber zu groß als zu klein – Leute lesen im Vorbeigehen, nicht am Schreibtisch.
 - **Starker Kontrast.** Helle Schrift auf dunklem Grund (oder umgekehrt), kein hellgrau auf weiß – das wirkt am Bildschirm schnell verwaschen.
@@ -73,7 +92,7 @@ Export-Qualität in Canva: **"Mittel"** reicht für Bildschirm-Darstellung völl
 
 ---
 
-## 6. Checkliste vor dem Hochladen
+## 7. Checkliste vor dem Hochladen
 
 - [ ] Leinwandgröße entspricht dem Ziel-Bildschirm (siehe Tabelle oben)
 - [ ] Unten rechts (Uhr-Bereich) ist frei von wichtigen Elementen
@@ -84,7 +103,7 @@ Export-Qualität in Canva: **"Mittel"** reicht für Bildschirm-Darstellung völl
 
 ---
 
-## 7. Häufige Fehler
+## 8. Häufige Fehler
 
 | Fehler | Auswirkung |
 |---|---|

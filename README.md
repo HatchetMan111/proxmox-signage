@@ -28,7 +28,12 @@ Du betreibst ein **kleines Unternehmen** (Café, Laden, Friseur, Praxis) und wil
 |---|---|
 | 📤 **Drag-&-Drop-Upload** | Bilder (JPG, PNG, GIF, WebP) & Videos (MP4, WebM, MOV) per Admin-UI |
 | 📋 **Playlist-Editor** | Reihenfolge per Drag&Drop, Dauer pro Bild, Shuffle-Modus |
+| ✍️ **Text-Slides** | Schnelle Textmeldungen ("Heute geschlossen") direkt im Admin erstellen – ohne Canva/Design-Tool |
+| ⏰ **Zeitsteuerung** | Wochentage & Uhrzeitfenster pro Element (z. B. Frühstückskarte nur Mo–Fr 7–11 Uhr) |
+| 📅 **Ablaufdatum** | Zeitlich befristete Inhalte fallen automatisch aus der Wiedergabe, sobald abgelaufen |
 | 🎬 **Fullscreen-Player** | Automatische Slideshow mit Überblend-Effekten (Fade / Slide) |
+| 🎞️ **Ken-Burns-Effekt** | Optionales sanftes Zoomen bei Standbildern für mehr Lebendigkeit |
+| 🖥️ **Split-Screen-Layouts** | Bildschirm in Bereiche teilen (Haupt + Ticker/Seitenleiste/2er-Split), jeder Bereich mit eigener unabhängiger Wiedergabe |
 | 📺 **Jeder Browser** | Läuft auf Tablet, Smart-TV, Handy, Laptop – kein App-Store nötig |
 | 🕐 **Live-Uhr** | Optional: Datum + Uhrzeit im Player |
 | 🔧 **REST-API** | Alles programmierbar – für Automationen & eigene Tools |
@@ -55,6 +60,8 @@ Player: http://192.168.x.y:8080/player
 ### 2. Medien hochladen
 
 👉 **Admin-URL** im Browser öffnen → Bilder/Videos per Drag & Drop in die Upload-Zone ziehen.
+
+> 💡 Tipp: Bevor du Inhalte gestaltest (z. B. in Canva) – kurz den **[Design-Guide](DESIGN-GUIDE.md)** checken, damit Auflösung & Format zum Bildschirm passen.
 
 ![Admin-UI Screenshot](https://via.placeholder.com/800x450/1a1a2e/ffffff?text=Admin-Oberflaeche)
 
@@ -105,14 +112,18 @@ sudo bash install-signage.sh --id 220 --memory 512 --ip 192.168.1.100/24
 | Bereich | Funktion |
 |---|---|
 | **Upload-Zone** | Bilder/Videos per Drag & Drop oder Klick hochladen |
-| **Medien-Galerie** | Alle hochgeladenen Dateien mit Vorschau, Sortieren per Drag&Drop |
-| **Einstellungen** | Anzeigedauer, Übergangseffekt, Shuffle, Uhr ein-/ausblenden |
+| **Text-Slide erstellen** | Textmeldung mit Farbe & Icon direkt erzeugen, ohne externes Tool |
+| **Medien-Galerie** | Alle Inhalte mit Vorschau, Sortieren per Drag&Drop |
+| **⏰ Zeitplan** | Pro Element: Wochentage, Uhrzeitfenster, Ablaufdatum, Bereich (bei Split-Layouts) festlegen |
+| **🖥️ Layout** | Vollbild / Haupt+Ticker / Haupt+Seitenleiste / 2er-Split per Klick wählen |
+| **Einstellungen** | Anzeigedauer, Übergangseffekt, Shuffle, Uhr, Ken-Burns-Effekt |
 | **Player-URL** | Wird automatisch angezeigt – einfach kopieren |
 
 ### Player (`/player`)
 
 - Vollbild-Slideshow mit CSS-Übergängen (Fade / Slide)
 - Videos werden automatisch abgespielt und nahtlos eingebunden
+- Text-Slides und zeitlich gesteuerte Inhalte werden automatisch berücksichtigt
 - Live-Uhr (optional) unten rechts
 - Läuft auf **jedem** Gerät mit modernem Browser
 
@@ -122,10 +133,31 @@ sudo bash install-signage.sh --id 220 --memory 512 --ip 192.168.1.100/24
 |---|---|---|
 | `GET` | `/api/media` | Alle Medien abrufen |
 | `POST` | `/api/upload` | Datei hochladen (multipart/form-data) |
-| `DELETE` | `/api/media/<datei>` | Datei löschen |
+| `DELETE` | `/api/media/<id>` | Datei oder Text-Slide löschen |
+| `POST` | `/api/text-slide` | Text-Slide erstellen |
+| `PUT` | `/api/text-slide/<id>` | Text-Slide bearbeiten |
+| `PUT` | `/api/schedule/<id>` | Zeitplan/Ablaufdatum/Bereich (`zone: "main"\|"secondary"`) setzen |
+| `DELETE` | `/api/schedule/<id>` | Zeitplan entfernen |
 | `GET` | `/api/playlist` | Aktuelle Playlist + Config abrufen |
 | `PUT` | `/api/playlist` | Config aktualisieren (JSON) |
 | `GET` | `/api/player/next` | Nächste Medien-Items (für Player-JS) |
+
+---
+
+## 🎨 Design-Richtlinien für Inhalte
+
+Damit Bilder/Videos auf dem Screen gut aussehen (richtige Auflösung, kein Beschnitt, lesbar auf Distanz), gibt es einen eigenen Guide für alle, die Inhalte gestalten (z. B. in Canva) – auch ohne technisches Vorwissen:
+
+👉 **[DESIGN-GUIDE.md](DESIGN-GUIDE.md)**
+
+Kurzfassung:
+
+| Aufstellung | Canva-Leinwandgröße |
+|---|---|
+| Querformat (TV/Monitor) | `1920 x 1080 px` |
+| Hochformat (Tablet) | `1080 x 1920 px` |
+
+Der Player beschneidet Bilder nie – bei falschem Seitenverhältnis entstehen stattdessen Balken. Die Hintergrundfarbe/-bild in den Admin-Einstellungen kann das kaschieren. Details, Sicherheitsabstände (Uhr-Overlay unten rechts) und Datei-Empfehlungen: siehe Guide.
 
 ---
 
@@ -135,6 +167,7 @@ sudo bash install-signage.sh --id 220 --memory 512 --ip 192.168.1.100/24
 proxmox-signage/
 ├── LICENSE                 ← MIT-Lizenz
 ├── README.md               ← Diese Datei
+├── DESIGN-GUIDE.md         ← 🎨 Design-Richtlinien für Content-Ersteller
 ├── .gitignore              ← Git-Ignore-Regeln
 ├── install-signage.sh      ← 🔧 Proxmox Install-Script (Haupt-Deliverable)
 └── signage-app/            ← 🐍 Flask-Web-App
