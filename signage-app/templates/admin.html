@@ -74,16 +74,19 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
 .zone-tray-wrap{margin-top:1.9rem;border-top:1px dashed var(--line);padding-top:1.5rem}
 .zone-tray-wrap h2{font-size:1rem;font-weight:800;letter-spacing:-.01em;margin-bottom:.3rem}
 .zone-tray-hint{font-size:.8rem;color:var(--ink-soft);margin-bottom:.9rem;line-height:1.5}
-.zone-tray{min-height:4.6rem;border:2px dashed var(--line);border-radius:var(--radius-lg);padding:.8rem;display:flex;flex-wrap:wrap;gap:.55rem;align-content:flex-start;background:var(--panel);transition:all .2s}
+.zone-tray{min-height:8rem;border:2px dashed var(--line);border-radius:var(--radius-lg);padding:.9rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.7rem;background:var(--panel);transition:all .2s}
 .zone-tray.drag-target{border-color:var(--accent);background:var(--accent-soft)}
-.zone-tray.empty{align-items:center;justify-content:center}
+.zone-tray.empty{display:flex;align-items:center;justify-content:center}
 .zone-tray.empty::before{content:"Medien aus dem Raster oben hierher ziehen";color:var(--ink-faint);font-size:.82rem}
-.zone-chip{display:flex;align-items:center;gap:.5rem;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:.3rem .5rem .3rem .3rem;font-size:.78rem}
-.zone-chip .zc-thumb{width:1.7rem;height:1.7rem;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--line)}
-.zone-chip .zc-swatch{width:1.7rem;height:1.7rem;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.8rem}
-.zone-chip .zc-name{max-width:9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
-.zone-chip .zc-back{background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:.85rem;padding:0 .15rem;border-radius:50%;line-height:1;transition:color .15s}
-.zone-chip .zc-back:hover{color:var(--danger)}
+.zone-chip{position:relative;border-radius:var(--radius-md);overflow:hidden;background:var(--paper);border:1px solid var(--line-soft);box-shadow:var(--shadow-card)}
+.zone-chip .zc-thumb{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:var(--paper)}
+.zone-chip .zc-swatch{width:100%;aspect-ratio:16/10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;padding:.5rem;text-align:center;font-size:.7rem;font-weight:600;overflow:hidden}
+.zone-chip .zc-swatch .zc-icon{font-size:1.4rem}
+.zone-chip .zc-video-badge{width:100%;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;font-size:1.8rem;background:var(--ink);color:#fff}
+.zone-chip .zc-info{padding:.4rem .5rem;display:flex;align-items:center;gap:.35rem;border-top:1px solid var(--line-soft)}
+.zone-chip .zc-name{flex:1;font-size:.72rem;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zone-chip .zc-back{background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:.85rem;padding:.1rem .3rem;border-radius:5px;line-height:1;transition:all .15s;flex-shrink:0}
+.zone-chip .zc-back:hover{background:var(--paper);color:var(--danger)}
 .empty-state{text-align:center;padding:3.2rem 2rem;color:var(--ink-faint)}
 .empty-state .icon{width:2.6rem;height:2.6rem;margin:0 auto .7rem;color:var(--ink-faint)}
 .empty-state p{font-size:.9rem}
@@ -253,11 +256,20 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
       <div class="zone-tray{% if not sec_items %} empty{% endif %}" id="zoneTray">
         {% for m in sec_items %}
         <div class="zone-chip" data-filename="{{ m.filename }}">
-          {% if m.type == 'text' %}<span class="zc-swatch" style="background:{{ m.bg_color }};color:{{ m.text_color }}">{{ m.icon or '✍️' }}</span>
-          {% elif m.type == 'video' %}<span class="zc-swatch" style="background:var(--ink);color:#fff">🎬</span>
-          {% else %}<img class="zc-thumb" src="{{ url_for('serve_media', filename=m.filename) }}">{% endif %}
-          <span class="zc-name">{{ m.text if m.type=='text' else m.filename }}</span>
-          <button class="zc-back" onclick="assignZone('{{ m.filename }}','main')" title="Zurück zu Haupt">↩</button>
+          {% if m.type == 'text' %}
+          <div class="zc-swatch" style="background:{{ m.bg_color }};color:{{ m.text_color }}">
+            {% if m.icon %}<span class="zc-icon">{{ m.icon }}</span>{% endif %}
+            <span>{{ m.text }}</span>
+          </div>
+          {% elif m.type == 'video' %}
+          <div class="zc-video-badge">🎬</div>
+          {% else %}
+          <img class="zc-thumb" src="{{ url_for('serve_media', filename=m.filename) }}" loading="lazy">
+          {% endif %}
+          <div class="zc-info">
+            <span class="zc-name" title="{{ m.filename }}">{{ m.text if m.type=='text' else m.filename }}</span>
+            <button class="zc-back" onclick="assignZone('{{ m.filename }}','main')" title="Zurück zu Haupt">↩</button>
+          </div>
         </div>
         {% endfor %}
       </div>
@@ -305,8 +317,11 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
     </div>
     <div class="card">
       <h3><span class="ic">🎨</span> Player-Hintergrund</h3>
-      <div class="setting-row"><label>Farbe</label><input type="color" id="bgColor" value="{{ config.background_color or '#000000' }}"></div>
+      <div class="setting-row"><label>{{ 'Haupt-Hintergrundfarbe' if config.layout and config.layout != 'fullscreen' else 'Farbe' }}</label><input type="color" id="bgColor" value="{{ config.background_color or '#000000' }}"></div>
       <div class="setting-row"><label>Hintergrundbild</label><select id="bgImage"><option value="">– Kein Bild –</option>{% for m in media %}{% if m.type=="image" %}<option value="{{ m.filename }}"{% if config.background_image==m.filename %} selected{% endif %}>{{ m.filename }}</option>{% endif %}{% endfor %}</select></div>
+      {% if config.layout and config.layout != 'fullscreen' %}
+      <div class="setting-row"><label>Sekundär-Hintergrundfarbe</label><input type="color" id="bgColorSecondary" value="{{ config.secondary_background_color or '#000000' }}"></div>
+      {% endif %}
       <div class="btn-row"><button onclick="saveBg()" class="btn btn-accent">💾 Speichern</button><button onclick="resetBg()" class="btn" style="background:var(--ink-faint)">Zurücksetzen</button></div>
     </div>
     <div class="card">
@@ -502,8 +517,8 @@ function closeModal(id){document.getElementById(id).classList.remove("show")}
 document.querySelectorAll(".modal-overlay").forEach(ov=>ov.addEventListener("click",e=>{if(e.target===ov)ov.classList.remove("show")}));
 
 // Background
-async function saveBg(){try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({background_color:document.getElementById("bgColor").value,background_image:document.getElementById("bgImage").value})});t((await r.json()).status==="ok"?"🎨 Gespeichert":"❌ Fehler")}catch(e){t("❌ Verbindung",1)}}
-async function resetBg(){document.getElementById("bgColor").value="#000000";document.getElementById("bgImage").value="";await saveBg();t("🎨 Zurückgesetzt")}
+async function saveBg(){try{const secEl=document.getElementById("bgColorSecondary");const body={background_color:document.getElementById("bgColor").value,background_image:document.getElementById("bgImage").value};if(secEl)body.secondary_background_color=secEl.value;const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(body)});t((await r.json()).status==="ok"?"🎨 Gespeichert":"❌ Fehler")}catch(e){t("❌ Verbindung",1)}}
+async function resetBg(){document.getElementById("bgColor").value="#000000";document.getElementById("bgImage").value="";const secEl=document.getElementById("bgColorSecondary");if(secEl)secEl.value="#000000";await saveBg();t("🎨 Zurückgesetzt")}
 
 // Password
 async function changePw(){const pw=document.getElementById("adminPassword").value,m=document.getElementById("pwMsg");if(pw.length<8){m.textContent="❌ Min. 8 Zeichen";m.style.color="var(--danger)";return}try{const r=await fetch(BASE+"/api/playlist",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({admin_password:pw})}),d=await r.json();if(d.status==="ok"){m.innerHTML="✅ Geändert";m.style.color="var(--success)";document.getElementById("adminPassword").value="";setTimeout(()=>location.reload(),1000)}else{m.innerHTML="❌ "+(d.message||"Fehler");m.style.color="var(--danger)"}}catch(e){m.innerHTML="❌ Verbindung";m.style.color="var(--danger)"}}

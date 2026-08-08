@@ -173,6 +173,8 @@ async function loadPlaylist(){try{
   clockEl.classList.toggle('hidden',!showClock);
   const bgColor=d.background_color||'#000000',bgImage=d.background_image||'';
   player.style.background=bgImage?'url(/media/'+encodeURIComponent(bgImage)+') center/cover no-repeat':bgColor;
+  const secEl=player.querySelector('.zone-secondary');
+  if(secEl)secEl.style.background=d.secondary_background_color||'#000000';
 
   const byZone={main:[],secondary:[]};
   (d.items||[]).forEach(it=>{byZone[it.zone==='secondary'?'secondary':'main'].push(it)});

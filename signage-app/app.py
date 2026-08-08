@@ -46,6 +46,7 @@ DEFAULT_CONFIG = {
     "show_filename": False,
     "ken_burns": False,
     "layout": "fullscreen",
+    "secondary_background_color": "#000000",
     "admin_password_hash": generate_password_hash("admin"),
     "force_password_change": True,
     "playlist": [],
@@ -651,6 +652,8 @@ def api_playlist():
             config["background_color"] = data["background_color"]
         if "background_image" in data:
             config["background_image"] = data["background_image"]
+        if "secondary_background_color" in data:
+            config["secondary_background_color"] = data["secondary_background_color"]
         if "admin_password" in data:
             pwd = str(data["admin_password"]).strip()
             if len(pwd) >= MIN_PASSWORD_LENGTH:
@@ -712,6 +715,7 @@ def api_player_next():
         "show_filename": config.get("show_filename", False),
         "background_color": config.get("background_color", "#000000"),
         "background_image": config.get("background_image", ""),
+        "secondary_background_color": config.get("secondary_background_color", "#000000"),
         "ken_burns": config.get("ken_burns", False),
     })
 
