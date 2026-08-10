@@ -32,6 +32,15 @@ CONFIG_FILE = APP_DIR / "config.json"
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".webm", ".mov"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov"}
+IMAGE_COMPRESS_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}  # .gif bewusst ausgenommen (Animation würde verloren gehen)
+MAX_IMAGE_DIMENSION = 2560  # px, längste Seite - alles darüber wird beim Upload verkleinert
+HOURS_WIDGET_ID = "__hours_widget__"
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 MAX_CONTENT_LENGTH = 500 * 1024 * 1024
 HOST = os.environ.get("SIGNAGE_HOST", "0.0.0.0")
@@ -53,6 +62,15 @@ DEFAULT_CONFIG = {
     "item_schedule": {},   # {key: {"days":[0-6], "start":"HH:MM", "end":"HH:MM", "expires":"YYYY-MM-DD"}}
     "text_slides": {},     # {id: {"text":..., "bg_color":..., "text_color":..., "icon":..., "created_at":...}}
     "item_zone": {},       # {key: "secondary"} - fehlender Eintrag = "main" (Standard-Bereich)
+    "emergency": None,     # None oder {"text":..., "bg_color":..., "text_color":..., "icon":...}
+    "opening_hours": {
+        "enabled": False,
+        "hours": {},        # {"0":{"open":"08:00","close":"18:00"}, ...} - Mo=0..So=6, fehlender Tag = geschlossen
+        "bg_color": "#0f766e",
+        "text_color": "#ffffff",
+        "closed_text": "Geschlossen",
+        "open_prefix": "Geöffnet bis",
+    },
 }
 
 VALID_LAYOUTS = {"fullscreen", "main_ticker", "main_sidebar", "split_2up"}
@@ -149,6 +167,62 @@ def config_transaction():
         _write_config_file_locked(config)
 
 
+def compute_hours_status(config: dict, now: datetime | None = None) -> dict:
+    """Berechnet den aktuellen Öffnungsstatus aus der Wochentag-Konfiguration."""
+    now = now or datetime.now()
+    oh = config.get("opening_hours", {})
+    today = oh.get("hours", {}).get(str(now.weekday()))
+    if today and today.get("open") and today.get("close"):
+        try:
+            o, c = _parse_hhmm(today["open"]), _parse_hhmm(today["close"])
+            if o <= now.time() <= c:
+                return {"open_now": True, "text": f"{oh.get('open_prefix', 'Geöffnet bis')} {today['close']} Uhr"}
+        except (ValueError, KeyError):
+            pass
+    return {"open_now": False, "text": oh.get("closed_text", "Geschlossen")}
+
+
+def build_hours_widget_item(config: dict, now: datetime | None = None) -> dict:
+    """Baut das Öffnungszeiten-Widget als normales Text-Item - dadurch braucht
+    weder Admin-Galerie noch Player irgendeine Sonderbehandlung für den Typ,
+    beides rendert es wie einen ganz normalen Text-Slide."""
+    status = compute_hours_status(config, now)
+    oh = config.get("opening_hours", {})
+    return {
+        "filename": HOURS_WIDGET_ID,
+        "type": "text",
+        "text": status["text"],
+        "bg_color": oh.get("bg_color", "#0f766e"),
+        "text_color": oh.get("text_color", "#ffffff"),
+        "icon": "✅" if status["open_now"] else "🔒",
+    }
+
+
+def maybe_compress_image(filepath: Path) -> None:
+    """Verkleinert zu große Bilder beim Upload automatisch (max. 2560px lange
+    Seite). GIFs werden bewusst übersprungen, damit Animationen nicht durch
+    das Neuspeichern als Standbild verloren gehen. Scheitert die Kompression
+    aus irgendeinem Grund, bleibt die Originaldatei unangetastet - der Upload
+    selbst darf dadurch nie fehlschlagen."""
+    if not PIL_AVAILABLE or filepath.suffix.lower() not in IMAGE_COMPRESS_EXTENSIONS:
+        return
+    try:
+        with Image.open(filepath) as img:
+            w, h = img.size
+            if max(w, h) <= MAX_IMAGE_DIMENSION:
+                return
+            scale = MAX_IMAGE_DIMENSION / max(w, h)
+            resized = img.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
+            save_kwargs = {}
+            if filepath.suffix.lower() in (".jpg", ".jpeg"):
+                if resized.mode in ("RGBA", "P"):
+                    resized = resized.convert("RGB")
+                save_kwargs = {"quality": 85, "optimize": True}
+            resized.save(filepath, **save_kwargs)
+    except Exception as e:
+        print(f"⚠️  Bildkomprimierung übersprungen für {filepath.name}: {e}", file=sys.stderr)
+
+
 def get_media_files() -> list[dict]:
     config = load_config()
     playlist = config.get("playlist", [])
@@ -173,6 +247,8 @@ def get_media_files() -> list[dict]:
             "icon": slide.get("icon", ""),
             "mtime": slide.get("created_at", ""),
         })
+    if config.get("opening_hours", {}).get("enabled"):
+        files.append(build_hours_widget_item(config))
     by_name = {f["filename"]: f for f in files}
     ordered = []
     for name in playlist:
@@ -398,8 +474,21 @@ def admin():
             )
 
     player_url = request.host_url.rstrip("/") + "/player"
+
+    weekday_labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    oh = config.get("opening_hours", {})
+    oh_days = []
+    for i, label in enumerate(weekday_labels):
+        day = oh.get("hours", {}).get(str(i))
+        oh_days.append({
+            "idx": i, "label": label,
+            "open": day.get("open") if day else "",
+            "close": day.get("close") if day else "",
+            "closed": day is None,
+        })
+
     return render_template("admin.html", media=media, config=config, player_url=player_url,
-                            playlist_warnings=playlist_warnings)
+                            playlist_warnings=playlist_warnings, oh_days=oh_days)
 
 
 @app.route("/player")
@@ -437,6 +526,8 @@ def api_list_media():
 @api_login_required
 def api_delete_media(filename):
     safe = Path(filename).name
+    if safe == HOURS_WIDGET_ID:
+        return jsonify({"status": "error", "message": "Das Öffnungszeiten-Widget lässt sich nur über die Einstellungen deaktivieren, nicht löschen"}), 400
     fp = MEDIA_DIR / safe
     is_file = fp.exists() and fp.is_file()
     with config_transaction() as config:
@@ -475,6 +566,7 @@ def api_upload():
             (MEDIA_DIR / safe).unlink(missing_ok=True)
             errors.append(f"{f.filename}: Speichern fehlgeschlagen ({e})")
             continue
+        maybe_compress_image(MEDIA_DIR / safe)
         uploaded.append(safe)
     if uploaded:
         with config_transaction() as config:
@@ -535,6 +627,57 @@ def api_update_text_slide(slide_id):
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/emergency", methods=["POST", "DELETE"])
+@api_login_required
+def api_emergency():
+    if request.method == "DELETE":
+        with config_transaction() as config:
+            config["emergency"] = None
+        return jsonify({"status": "ok"})
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text", "")).strip()[:200]
+    if not text:
+        return jsonify({"status": "error", "message": "Text darf nicht leer sein"}), 400
+    with config_transaction() as config:
+        config["emergency"] = {
+            "text": text,
+            "bg_color": str(data.get("bg_color", "#dc2626"))[:20],
+            "text_color": str(data.get("text_color", "#ffffff"))[:20],
+            "icon": str(data.get("icon", "🚨"))[:8],
+        }
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/opening-hours", methods=["PUT"])
+@api_login_required
+def api_set_opening_hours():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    hours_in = data.get("hours", {}) if isinstance(data.get("hours"), dict) else {}
+    hours = {}
+    for day in range(7):
+        entry = hours_in.get(str(day))
+        if entry and entry.get("open") and entry.get("close"):
+            try:
+                _parse_hhmm(entry["open"])
+                _parse_hhmm(entry["close"])
+                hours[str(day)] = {"open": entry["open"], "close": entry["close"]}
+            except (ValueError, TypeError):
+                return jsonify({"status": "error", "message": "Ungültige Uhrzeit (Format HH:MM)"}), 400
+    with config_transaction() as config:
+        config.setdefault("opening_hours", dict(DEFAULT_CONFIG["opening_hours"]))
+        was_enabled = config["opening_hours"].get("enabled", False)
+        config["opening_hours"]["enabled"] = enabled
+        config["opening_hours"]["hours"] = hours
+        if "bg_color" in data:
+            config["opening_hours"]["bg_color"] = str(data["bg_color"])[:20]
+        if "text_color" in data:
+            config["opening_hours"]["text_color"] = str(data["text_color"])[:20]
+        if enabled and not was_enabled and HOURS_WIDGET_ID not in config["playlist"]:
+            config["playlist"].append(HOURS_WIDGET_ID)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/zone/<key>", methods=["PUT"])
 @api_login_required
 def api_set_zone(key):
@@ -550,7 +693,7 @@ def api_set_zone(key):
     if zone not in ("main", "secondary"):
         zone = "main"
     with config_transaction() as config:
-        valid = (MEDIA_DIR / safe).is_file() or safe in config.get("text_slides", {})
+        valid = (MEDIA_DIR / safe).is_file() or safe in config.get("text_slides", {}) or safe == HOURS_WIDGET_ID
         if not valid:
             return jsonify({"status": "error", "message": "Element nicht gefunden"}), 404
         config.setdefault("item_zone", {})
@@ -594,7 +737,7 @@ def api_set_schedule(key):
             except ValueError:
                 return jsonify({"status": "error", "message": "Ungültiges Datum (Format YYYY-MM-DD)"}), 400
     with config_transaction() as config:
-        valid = (MEDIA_DIR / safe).is_file() or safe in config.get("text_slides", {})
+        valid = (MEDIA_DIR / safe).is_file() or safe in config.get("text_slides", {}) or safe == HOURS_WIDGET_ID
         if not valid:
             return jsonify({"status": "error", "message": "Element nicht gefunden"}), 404
         config.setdefault("item_schedule", {})
@@ -633,6 +776,8 @@ def api_playlist():
             if key in data:
                 if key == "playlist":
                     text_ids = set(config.get("text_slides", {}).keys())
+                    if config.get("opening_hours", {}).get("enabled"):
+                        text_ids.add(HOURS_WIDGET_ID)
                     config[key] = [f for f in data[key] if (MEDIA_DIR / f).is_file() or f in text_ids]
                 elif key == "layout":
                     if data[key] in VALID_LAYOUTS:
@@ -672,6 +817,33 @@ def api_player_next():
     with _last_seen_lock:
         _last_seen_at = datetime.now()
     config = load_config()
+
+    # Notfall-Override hat absoluten Vorrang vor allem anderen (Playlist,
+    # Zeitpläne, Layout/Zonen) - zeigt IMMER nur die Notfallmeldung, fullscreen,
+    # unabhängig vom sonst konfigurierten Layout, damit sie maximal auffällt.
+    emergency = config.get("emergency")
+    if emergency:
+        return jsonify({
+            "items": [{
+                "filename": "__emergency__",
+                "type": "text",
+                "zone": "main",
+                "text": emergency.get("text", ""),
+                "bg_color": emergency.get("bg_color", "#dc2626"),
+                "text_color": emergency.get("text_color", "#ffffff"),
+                "icon": emergency.get("icon", "🚨"),
+            }],
+            "layout": "fullscreen",
+            "display_duration": config.get("display_duration", 8),
+            "transition": "none",
+            "show_clock": config.get("show_clock", True),
+            "show_filename": False,
+            "background_color": emergency.get("bg_color", "#dc2626"),
+            "background_image": "",
+            "secondary_background_color": "#000000",
+            "ken_burns": False,
+        })
+
     playlist = list(config.get("playlist", []))
     hidden = set(config.get("hidden_items", []))
     now = datetime.now()
@@ -686,6 +858,12 @@ def api_player_next():
     items = []
     for name in playlist:
         zone = item_zone.get(name, "main") if layout != "fullscreen" else "main"
+        if name == HOURS_WIDGET_ID:
+            if config.get("opening_hours", {}).get("enabled"):
+                widget = build_hours_widget_item(config, now)
+                widget["zone"] = zone
+                items.append(widget)
+            continue
         if name in text_slides:
             slide = text_slides[name]
             items.append({

@@ -37,6 +37,10 @@ Wir helfen dir, deinen Laden mit verschiedenen Lösungen ins 21. Jahrhundert zu 
 | 🎞️ **Ken-Burns-Effekt** | Optionales sanftes Zoomen bei Standbildern für mehr Lebendigkeit |
 | 🖥️ **Split-Screen-Layouts** | Bildschirm in Bereiche teilen (Haupt + Ticker/Seitenleiste/2er-Split), jeder Bereich mit eigener unabhängiger Wiedergabe |
 | 🟢 **Live-Status** | Admin zeigt, ob der Player gerade online ist, plus Warnhinweis, falls gerade nichts angezeigt wird (z. B. wegen Zeitplan) |
+| 🚨 **Notfall-Override** | Ein Klick überschreibt sofort ALLES mit einer einzigen Meldung (z. B. "Wasserschaden - heute geschlossen"), unabhängig von Playlist/Layout/Zeitplänen |
+| 🕐 **Öffnungszeiten-Widget** | Zeigt automatisch "Geöffnet bis X Uhr" bzw. "Geschlossen" basierend auf hinterlegten Wochentagen – kein manuelles Umschalten nötig |
+| 📋 **Schnellvorlagen** | Vorausgefüllte Text-Slide-Vorlagen für die häufigsten Fälle (geschlossen, gleich zurück, Sonderangebot) |
+| 🖼️ **Automatische Bildkomprimierung** | Zu große Uploads werden automatisch auf eine sinnvolle Auflösung verkleinert (max. 2560px), spart Speicherplatz |
 | 📺 **Jeder Browser** | Läuft auf Tablet, Smart-TV, Handy, Laptop – kein App-Store nötig |
 | 🕐 **Live-Uhr** | Optional: Datum + Uhrzeit im Player |
 | 🔧 **REST-API** | Alles programmierbar – für Automationen & eigene Tools |
@@ -141,6 +145,9 @@ sudo bash install-signage.sh --id 220 --memory 512 --ip 192.168.1.100/24
 | `PUT` | `/api/text-slide/<id>` | Text-Slide bearbeiten |
 | `PUT` | `/api/schedule/<id>` | Zeitplan/Ablaufdatum/Bereich (`zone: "main"\|"secondary"`) setzen |
 | `DELETE` | `/api/schedule/<id>` | Zeitplan entfernen |
+| `POST` | `/api/emergency` | Notfall-Override aktivieren |
+| `DELETE` | `/api/emergency` | Notfall-Override beenden |
+| `PUT` | `/api/opening-hours` | Öffnungszeiten-Widget konfigurieren |
 | `GET` | `/api/playlist` | Aktuelle Playlist + Config abrufen |
 | `PUT` | `/api/playlist` | Config aktualisieren (JSON) |
 | `GET` | `/api/player/next` | Nächste Medien-Items (für Player-JS) |

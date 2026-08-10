@@ -278,6 +278,26 @@ ensure_waitress_installed() {
         || warn "Waitress-Installation fehlgeschlagen – falle auf Flask-Dev-Server zurück"
 }
 
+# Pillow (für automatische Bildkomprimierung beim Upload). Rein optional -
+# app.py fängt ein Fehlen defensiv ab und überspringt die Komprimierung dann
+# einfach, der Upload selbst funktioniert in jedem Fall auch ohne.
+ensure_pillow_installed() {
+    if pct exec "$CT_ID" -- python3 -c "import PIL" 2>/dev/null; then
+        return 0
+    fi
+    info "Installiere Pillow (Bildkomprimierung)..."
+    if pct exec "$CT_ID" -- apt-get install -y -qq python3-pil 2>&1 | tail -2; then
+        if pct exec "$CT_ID" -- python3 -c "import PIL" 2>/dev/null; then
+            ok "Pillow installiert (apt)"
+            return 0
+        fi
+    fi
+    warn "python3-pil nicht über apt verfügbar – installiere über pip"
+    pct exec "$CT_ID" -- pip3 install --break-system-packages -q Pillow 2>&1 | tail -3
+    pct exec "$CT_ID" -- python3 -c "import PIL" 2>/dev/null && ok "Pillow installiert (pip)" \
+        || warn "Pillow-Installation fehlgeschlagen – Uploads funktionieren trotzdem, nur ohne automatische Komprimierung"
+}
+
 # ── systemd-Service schreiben ───────────────────────────────────────────────
 # Gemeinsam von Neuinstallation UND Update genutzt, damit bestehende
 # Container beim --update denselben Fix (Waitress statt Dev-Server) und
@@ -427,11 +447,12 @@ setup_container() {
     info "Installiere Python + Flask..."
     pct exec "$CT_ID" -- apt-get update -qq 2>&1 | tail -1
     pct exec "$CT_ID" -- apt-get install -y -qq \
-        python3 python3-pip python3-flask python3-werkzeug curl wget \
+        python3 python3-pip python3-flask python3-werkzeug python3-pil curl wget \
         2>&1 | tail -3
     ok "Python + Flask installiert"
 
     ensure_waitress_installed
+    ensure_pillow_installed
     check_disk_space
 
     # App-Dateien kopieren
@@ -502,6 +523,7 @@ update_container() {
     # Das vorhandene SIGNAGE_SECRET wird dabei wiederverwendet (siehe
     # write_systemd_service), bestehende Logins bleiben also gültig.
     ensure_waitress_installed
+    ensure_pillow_installed
     write_systemd_service
 
     pct exec "$CT_ID" -- systemctl restart signage
