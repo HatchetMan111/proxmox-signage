@@ -291,6 +291,11 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
     <div class="card" style="border-color:#f3c6c2">
       <h3><span class="ic">🚨</span> Notfall-Override</h3>
       <p class="hint" style="margin-bottom:.7rem">Überschreibt sofort ALLES (Playlist, Zeitpläne, Layout) mit einer einzigen Meldung, egal was sonst läuft.</p>
+      <div class="ts-templates" style="margin-bottom:.6rem">
+        <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='💧 Wegen Wasserschaden heute geschlossen'">💧 Wasserschaden</button>
+        <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='🔧 Technische Störung – bitte kurz gedulden'">🔧 Störung</button>
+        <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='❄️ Wegen Wetter heute geschlossen'">❄️ Wetter</button>
+      </div>
       <textarea id="emergencyText" maxlength="200" placeholder="z. B. Wegen Wasserschaden heute geschlossen" style="width:100%;padding:.6rem .7rem;border:1.5px solid var(--line);border-radius:8px;font-size:.85rem;font-family:var(--font);resize:vertical;min-height:60px;background:var(--paper)"></textarea>
       <button onclick="activateEmergency()" class="btn" style="background:#dc2626;margin-top:.6rem;width:100%">🚨 Sofort aktivieren</button>
     </div>
@@ -356,6 +361,7 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
         </div>
         {% endfor %}
       </div>
+      <div id="ohPreview" style="font-size:.76rem;color:var(--ink-soft);background:var(--paper);border-radius:6px;padding:.5rem .7rem;margin-top:.4rem"></div>
       <button onclick="saveOpeningHours()" class="btn btn-accent" style="margin-top:.5rem;width:100%">💾 Speichern</button>
     </div>
     <div class="card">
@@ -597,7 +603,40 @@ function toggleOhRow(cb){
   const row=cb.closest(".oh-day-row");
   row.querySelector(".oh-open").disabled=cb.checked;
   row.querySelector(".oh-close").disabled=cb.checked;
+  updateHoursPreview();
 }
+function getOhDay(idx){
+  const row=document.querySelector('.oh-day-row[data-day="'+idx+'"]');
+  if(!row||row.querySelector(".oh-closed").checked)return null;
+  const open=row.querySelector(".oh-open").value,close=row.querySelector(".oh-close").value;
+  return(open&&close)?{open,close}:null;
+}
+function toMin(s){const[h,m]=s.split(":").map(Number);return h*60+m}
+function computeHoursPreview(){
+  // Spiegelt compute_hours_status() aus app.py 1:1 (inkl. Mitternacht-Fall), rein clientseitig
+  // für sofortiges Feedback ohne Speichern+Reload.
+  const now=new Date(),t=now.getHours()*60+now.getMinutes();
+  const pyWeekday=(now.getDay()+6)%7; // JS: 0=So..6=Sa -> Python: 0=Mo..6=So
+  const today=getOhDay(pyWeekday);
+  if(today){
+    const o=toMin(today.open),c=toMin(today.close);
+    if(o<=c){if(t>=o&&t<=c)return"✅ Geöffnet bis "+today.close+" Uhr"}
+    else if(t>=o)return"✅ Geöffnet bis "+today.close+" Uhr";
+  }
+  const yesterday=getOhDay((pyWeekday+6)%7);
+  if(yesterday){
+    const o=toMin(yesterday.open),c=toMin(yesterday.close);
+    if(o>c&&t<=c)return"✅ Geöffnet bis "+yesterday.close+" Uhr";
+  }
+  return"🔒 Geschlossen";
+}
+function updateHoursPreview(){
+  const el=document.getElementById("ohPreview");if(!el)return;
+  if(!document.getElementById("ohEnabled").checked){el.textContent="Widget ist deaktiviert";return}
+  el.textContent="Vorschau (jetzt): "+computeHoursPreview();
+}
+document.querySelectorAll("#ohDays input,#ohEnabled").forEach(inp=>inp.addEventListener("input",updateHoursPreview));
+updateHoursPreview();
 async function saveOpeningHours(){
   const enabled=document.getElementById("ohEnabled").checked;
   const hours={};

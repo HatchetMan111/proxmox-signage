@@ -168,17 +168,41 @@ def config_transaction():
 
 
 def compute_hours_status(config: dict, now: datetime | None = None) -> dict:
-    """Berechnet den aktuellen Öffnungsstatus aus der Wochentag-Konfiguration."""
+    """Berechnet den aktuellen Öffnungsstatus aus der Wochentag-Konfiguration.
+    Behandelt explizit Zeitfenster über Mitternacht (z.B. 18:00-01:00): dafür
+    muss sowohl das HEUTIGE Fenster (ab Öffnung) als auch ein GESTRIGES
+    Fenster, das noch bis in den frühen Morgen von heute hineinreicht,
+    geprüft werden - ein reiner "open <= jetzt <= close"-Vergleich schlägt
+    fehl, sobald open > close numerisch ist."""
     now = now or datetime.now()
     oh = config.get("opening_hours", {})
-    today = oh.get("hours", {}).get(str(now.weekday()))
+    hours = oh.get("hours", {})
+    t = now.time()
+    open_prefix = oh.get("open_prefix", "Geöffnet bis")
+
+    today = hours.get(str(now.weekday()))
     if today and today.get("open") and today.get("close"):
         try:
             o, c = _parse_hhmm(today["open"]), _parse_hhmm(today["close"])
-            if o <= now.time() <= c:
-                return {"open_now": True, "text": f"{oh.get('open_prefix', 'Geöffnet bis')} {today['close']} Uhr"}
+            if o <= c:
+                if o <= t <= c:
+                    return {"open_now": True, "text": f"{open_prefix} {today['close']} Uhr"}
+            elif t >= o:
+                # Über Mitternacht, und wir sind im Abend-Teil (nach Öffnung, vor Mitternacht)
+                return {"open_now": True, "text": f"{open_prefix} {today['close']} Uhr"}
         except (ValueError, KeyError):
             pass
+
+    yesterday = hours.get(str((now.weekday() - 1) % 7))
+    if yesterday and yesterday.get("open") and yesterday.get("close"):
+        try:
+            o, c = _parse_hhmm(yesterday["open"]), _parse_hhmm(yesterday["close"])
+            if o > c and t <= c:
+                # Gestriges Fenster ging über Mitternacht und reicht noch bis jetzt (früher Morgen)
+                return {"open_now": True, "text": f"{open_prefix} {yesterday['close']} Uhr"}
+        except (ValueError, KeyError):
+            pass
+
     return {"open_now": False, "text": oh.get("closed_text", "Geschlossen")}
 
 
@@ -452,7 +476,9 @@ def admin():
                 main_active += 1
 
     playlist_warnings = []
-    if layout == "fullscreen":
+    if config.get("emergency"):
+        pass  # Während des Notfall-Modus ist der normale Playlist-Zustand irrelevant - keine Doppel-Banner
+    elif layout == "fullscreen":
         if main_total > 0 and main_active == 0:
             playlist_warnings.append(
                 f"Aktuell werden 0 von {main_total} Elementen angezeigt – vermutlich greift gerade ein Zeitplan (⏰)."
