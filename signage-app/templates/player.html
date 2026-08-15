@@ -56,6 +56,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
   color:rgba(255,255,255,.3);font-size:.85rem;z-index:10;
   pointer-events:none;transition:opacity .5s}
 #filename.hidden{opacity:0}
+/* ── Öffnungszeiten-Banner: dezente Pille unten mittig, damit sie nicht mit
+   Uhr (unten rechts) oder Dateiname (unten links) kollidiert ── */
+#hoursBanner{position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  padding:.55rem 1.4rem;border-radius:999px;font-size:1rem;font-weight:700;
+  z-index:12;box-shadow:0 4px 18px rgba(0,0,0,.35);transition:opacity .5s;
+  white-space:nowrap;pointer-events:none}
+#hoursBanner.hidden{display:none}
 /* ── Leerer Zustand ── */
 .no-media{color:#555;font-size:1.3rem;font-weight:300;padding:1rem;text-align:center}
 </style>
@@ -64,6 +71,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 <div id="player" class="layout-fullscreen"></div>
 <div id="clock"></div>
 <div id="filename" class="hidden"></div>
+<div id="hoursBanner" class="hidden"></div>
 
 <script>
 (function(){
@@ -72,6 +80,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 const player=document.getElementById('player');
 const clockEl=document.getElementById('clock');
 const fnEl=document.getElementById('filename');
+const hoursBannerEl=document.getElementById('hoursBanner');
 let showClock=true,showFilename=false;
 
 function updateClock(){clockEl.innerHTML=new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})+'<br>'+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}
@@ -175,6 +184,16 @@ async function loadPlaylist(){try{
   player.style.background=bgImage?'url(/media/'+encodeURIComponent(bgImage)+') center/cover no-repeat':bgColor;
   const secEl=player.querySelector('.zone-secondary');
   if(secEl)secEl.style.background=d.secondary_background_color||'#000000';
+
+  const ohb=d.opening_hours_banner;
+  if(ohb){
+    hoursBannerEl.textContent=(ohb.icon?ohb.icon+' ':'')+ohb.text;
+    hoursBannerEl.style.background=ohb.bg_color||'#0f766e';
+    hoursBannerEl.style.color=ohb.text_color||'#ffffff';
+    hoursBannerEl.classList.remove('hidden');
+  }else{
+    hoursBannerEl.classList.add('hidden');
+  }
 
   const byZone={main:[],secondary:[]};
   (d.items||[]).forEach(it=>{byZone[it.zone==='secondary'?'secondary':'main'].push(it)});

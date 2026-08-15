@@ -160,6 +160,9 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
 .modal textarea:focus,.modal input:focus{outline:none;border-color:var(--accent)}
 .modal label.field-label{display:block;font-size:.76rem;font-weight:600;color:var(--ink-soft);margin:.8rem 0 .35rem;text-transform:uppercase;letter-spacing:.04em}
 .ts-templates{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.9rem}
+.emergency-tabs{display:flex;gap:.4rem;margin-bottom:.8rem}
+.emg-tab{flex:1;background:var(--paper);border:1.5px solid var(--line);border-radius:8px;padding:.45rem;font-size:.78rem;cursor:pointer;color:var(--ink-soft);font-family:var(--font);transition:all .15s}
+.emg-tab.active{background:#dc2626;color:#fff;border-color:#dc2626}
 .ts-tpl{background:var(--paper);border:1.5px solid var(--line);border-radius:999px;padding:.3rem .7rem;font-size:.74rem;cursor:pointer;color:var(--ink-soft);transition:all .15s;font-family:var(--font)}
 .ts-tpl:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
 .modal .row2{display:flex;gap:.7rem}
@@ -189,7 +192,7 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
 </div>
 {% if config.emergency %}
 <div class="banner emergency">
-  <span>🚨 NOTFALL-MODUS AKTIV – Player zeigt nur: „{{ config.emergency.text }}"</span>
+  <span>🚨 NOTFALL-MODUS AKTIV – Player zeigt nur: {% if config.emergency.media %}🖼️ {{ config.emergency.media }}{% else %}„{{ config.emergency.text }}"{% endif %}</span>
   <button class="btn" style="background:#fff;color:#dc2626;padding:.35rem .9rem" onclick="endEmergency()">✅ Notfall beenden</button>
 </div>
 {% endif %}
@@ -291,13 +294,30 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
     <div class="card" style="border-color:#f3c6c2">
       <h3><span class="ic">🚨</span> Notfall-Override</h3>
       <p class="hint" style="margin-bottom:.7rem">Überschreibt sofort ALLES (Playlist, Zeitpläne, Layout) mit einer einzigen Meldung, egal was sonst läuft.</p>
-      <div class="ts-templates" style="margin-bottom:.6rem">
-        <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='💧 Wegen Wasserschaden heute geschlossen'">💧 Wasserschaden</button>
-        <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='🔧 Technische Störung – bitte kurz gedulden'">🔧 Störung</button>
-        <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='❄️ Wegen Wetter heute geschlossen'">❄️ Wetter</button>
+      <div class="emergency-tabs">
+        <button type="button" class="emg-tab active" data-mode="text" onclick="setEmergencyMode('text')">✍️ Text</button>
+        <button type="button" class="emg-tab" data-mode="image" onclick="setEmergencyMode('image')">🖼️ Eigenes Bild/Video</button>
       </div>
-      <textarea id="emergencyText" maxlength="200" placeholder="z. B. Wegen Wasserschaden heute geschlossen" style="width:100%;padding:.6rem .7rem;border:1.5px solid var(--line);border-radius:8px;font-size:.85rem;font-family:var(--font);resize:vertical;min-height:60px;background:var(--paper)"></textarea>
-      <button onclick="activateEmergency()" class="btn" style="background:#dc2626;margin-top:.6rem;width:100%">🚨 Sofort aktivieren</button>
+      <div id="emgTextPanel">
+        <div class="ts-templates" style="margin-bottom:.6rem">
+          <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='💧 Wegen Wasserschaden heute geschlossen'">💧 Wasserschaden</button>
+          <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='🔧 Technische Störung – bitte kurz gedulden'">🔧 Störung</button>
+          <button type="button" class="ts-tpl" onclick="document.getElementById('emergencyText').value='❄️ Wegen Wetter heute geschlossen'">❄️ Wetter</button>
+        </div>
+        <textarea id="emergencyText" maxlength="200" placeholder="z. B. Wegen Wasserschaden heute geschlossen" style="width:100%;padding:.6rem .7rem;border:1.5px solid var(--line);border-radius:8px;font-size:.85rem;font-family:var(--font);resize:vertical;min-height:60px;background:var(--paper)"></textarea>
+        <button onclick="activateEmergency()" class="btn" style="background:#dc2626;margin-top:.6rem;width:100%">🚨 Sofort aktivieren</button>
+      </div>
+      <div id="emgImagePanel" style="display:none">
+        <p class="hint" style="margin-bottom:.6rem">Eigenes Motiv (z. B. in Canva gestaltet) hochladen und sofort als Vollbild-Notfallmeldung anzeigen. Landet danach in deiner Medien-Bibliothek, läuft aber nicht in der normalen Playlist mit.</p>
+        <input type="file" id="emergencyFileInput" accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.webm,.mov" style="display:none">
+        <button type="button" onclick="document.getElementById('emergencyFileInput').click()" class="btn" style="width:100%;margin-bottom:.7rem">📤 Neu hochladen & sofort aktivieren</button>
+        <label class="field-label">Oder bereits vorhandenes Medium</label>
+        <select id="emergencyImageSelect" style="width:100%;padding:.5rem .7rem;border:1.5px solid var(--line);border-radius:8px;font-size:.85rem;background:var(--paper);font-family:var(--font)">
+          <option value="">– auswählen –</option>
+          {% for m in media %}{% if m.type in ('image','video') %}<option value="{{ m.filename }}">{{ m.filename }}</option>{% endif %}{% endfor %}
+        </select>
+        <button onclick="activateEmergencyMedia()" class="btn" style="background:#dc2626;margin-top:.6rem;width:100%">🚨 Sofort aktivieren</button>
+      </div>
     </div>
     {% endif %}
     <div class="card">
@@ -350,6 +370,13 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
     <div class="card">
       <h3><span class="ic">🕐</span> Öffnungszeiten</h3>
       <label class="switch-row"><span class="switch"><input type="checkbox" id="ohEnabled"{% if config.opening_hours.enabled %} checked{% endif %}><span class="switch-track"><span class="switch-thumb"></span></span></span><span class="switch-label">Widget aktivieren</span></label>
+      <div class="setting-row" style="margin-top:.5rem">
+        <label>Anzeige als</label>
+        <select id="ohDisplayMode">
+          <option value="banner"{% if oh_display_mode != 'slide' %} selected{% endif %}>📍 Banner (immer sichtbar, unten)</option>
+          <option value="slide"{% if oh_display_mode == 'slide' %} selected{% endif %}>🔄 Rotierendes Element (wie ein Slide)</option>
+        </select>
+      </div>
       <div id="ohDays" style="margin-top:.5rem">
         {% for d in oh_days %}
         <div class="oh-day-row" data-day="{{ d.idx }}" style="display:flex;align-items:center;gap:.4rem;margin-bottom:.4rem">
@@ -579,6 +606,11 @@ async function changePw(){const pw=document.getElementById("adminPassword").valu
 function copyUrl(u){navigator.clipboard.writeText(u).then(()=>t("📋 Kopiert"))}
 
 // Notfall-Override
+function setEmergencyMode(mode){
+  document.querySelectorAll(".emg-tab").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
+  document.getElementById("emgTextPanel").style.display=mode==="text"?"":"none";
+  document.getElementById("emgImagePanel").style.display=mode==="image"?"":"none";
+}
 async function activateEmergency(){
   const text=document.getElementById("emergencyText").value.trim();
   if(!text){t("❌ Text darf nicht leer sein",1);return}
@@ -590,6 +622,30 @@ async function activateEmergency(){
     else t("❌ "+(d.message||"Fehler"),1);
   }catch(e){t("❌ Verbindung",1)}
 }
+async function activateEmergencyMediaByName(name){
+  if(!confirm("Notfallmeldung JETZT auf dem Player anzeigen? Überschreibt die normale Wiedergabe komplett, bis du sie wieder beendest."))return;
+  try{
+    const r=await fetch(BASE+"/api/emergency",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({media:name})});
+    const d=await r.json();
+    if(d.status==="ok"){t("🚨 Notfallmeldung aktiv");setTimeout(()=>location.reload(),500)}
+    else t("❌ "+(d.message||"Fehler"),1);
+  }catch(e){t("❌ Verbindung",1)}
+}
+async function activateEmergencyMedia(){
+  const name=document.getElementById("emergencyImageSelect").value;
+  if(!name){t("❌ Bitte ein Medium wählen",1);return}
+  await activateEmergencyMediaByName(name);
+}
+document.getElementById("emergencyFileInput")?.addEventListener("change",async e=>{
+  const f=e.target.files[0];if(!f)return;
+  const fd=new FormData();fd.append("file",f);fd.append("skip_playlist","1");
+  try{
+    const r=await fetch(BASE+"/api/upload",{method:"POST",body:fd,credentials:"include"});
+    const d=await r.json();
+    if(d.files&&d.files.length){await activateEmergencyMediaByName(d.files[0])}
+    else{t("❌ "+(d.errors?d.errors.join(", "):"Upload fehlgeschlagen"),1)}
+  }catch(err){t("❌ Verbindung",1)}
+});
 async function endEmergency(){
   try{
     const r=await fetch(BASE+"/api/emergency",{method:"DELETE",credentials:"include"});
@@ -649,7 +705,8 @@ async function saveOpeningHours(){
     }
   });
   try{
-    const r=await fetch(BASE+"/api/opening-hours",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({enabled,hours})});
+    const display_mode=document.getElementById("ohDisplayMode").value;
+    const r=await fetch(BASE+"/api/opening-hours",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({enabled,hours,display_mode})});
     const d=await r.json();
     if(d.status==="ok"){t("🕐 Gespeichert");setTimeout(()=>location.reload(),700)}
     else t("❌ "+(d.message||"Fehler"),1);

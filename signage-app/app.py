@@ -65,6 +65,7 @@ DEFAULT_CONFIG = {
     "emergency": None,     # None oder {"text":..., "bg_color":..., "text_color":..., "icon":...}
     "opening_hours": {
         "enabled": False,
+        "display_mode": "banner",  # "banner" (immer sichtbar, unten) oder "slide" (rotiert wie ein normales Element)
         "hours": {},        # {"0":{"open":"08:00","close":"18:00"}, ...} - Mo=0..So=6, fehlender Tag = geschlossen
         "bg_color": "#0f766e",
         "text_color": "#ffffff",
@@ -271,7 +272,8 @@ def get_media_files() -> list[dict]:
             "icon": slide.get("icon", ""),
             "mtime": slide.get("created_at", ""),
         })
-    if config.get("opening_hours", {}).get("enabled"):
+    oh_cfg = config.get("opening_hours", {})
+    if oh_cfg.get("enabled") and oh_cfg.get("display_mode", "banner") == "slide":
         files.append(build_hours_widget_item(config))
     by_name = {f["filename"]: f for f in files}
     ordered = []
@@ -503,6 +505,9 @@ def admin():
 
     weekday_labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     oh = config.get("opening_hours", {})
+    oh_display_mode = oh.get("display_mode", "banner")
+    if oh_display_mode not in ("banner", "slide"):
+        oh_display_mode = "banner"
     oh_days = []
     for i, label in enumerate(weekday_labels):
         day = oh.get("hours", {}).get(str(i))
@@ -514,7 +519,8 @@ def admin():
         })
 
     return render_template("admin.html", media=media, config=config, player_url=player_url,
-                            playlist_warnings=playlist_warnings, oh_days=oh_days)
+                            playlist_warnings=playlist_warnings, oh_days=oh_days,
+                            oh_display_mode=oh_display_mode)
 
 
 @app.route("/player")
@@ -594,7 +600,8 @@ def api_upload():
             continue
         maybe_compress_image(MEDIA_DIR / safe)
         uploaded.append(safe)
-    if uploaded:
+    skip_playlist = request.form.get("skip_playlist") == "1"
+    if uploaded and not skip_playlist:
         with config_transaction() as config:
             for safe in uploaded:
                 if safe not in config["playlist"]:
@@ -661,6 +668,14 @@ def api_emergency():
             config["emergency"] = None
         return jsonify({"status": "ok"})
     data = request.get_json(silent=True) or {}
+    media = data.get("media")
+    if media:
+        safe = Path(media).name
+        if not (MEDIA_DIR / safe).is_file():
+            return jsonify({"status": "error", "message": "Datei nicht gefunden"}), 404
+        with config_transaction() as config:
+            config["emergency"] = {"media": safe}
+        return jsonify({"status": "ok"})
     text = str(data.get("text", "")).strip()[:200]
     if not text:
         return jsonify({"status": "error", "message": "Text darf nicht leer sein"}), 400
@@ -692,15 +707,24 @@ def api_set_opening_hours():
                 return jsonify({"status": "error", "message": "Ungültige Uhrzeit (Format HH:MM)"}), 400
     with config_transaction() as config:
         config.setdefault("opening_hours", dict(DEFAULT_CONFIG["opening_hours"]))
-        was_enabled = config["opening_hours"].get("enabled", False)
         config["opening_hours"]["enabled"] = enabled
         config["opening_hours"]["hours"] = hours
+        display_mode = data.get("display_mode")
+        if display_mode not in ("banner", "slide"):
+            display_mode = config["opening_hours"].get("display_mode", "banner")
+        config["opening_hours"]["display_mode"] = display_mode
         if "bg_color" in data:
             config["opening_hours"]["bg_color"] = str(data["bg_color"])[:20]
         if "text_color" in data:
             config["opening_hours"]["text_color"] = str(data["text_color"])[:20]
-        if enabled and not was_enabled and HOURS_WIDGET_ID not in config["playlist"]:
-            config["playlist"].append(HOURS_WIDGET_ID)
+        # Playlist-Zugehörigkeit sauber halten: das Widget ist nur im Slide-Modus
+        # ein rotierendes Element. Im Banner-Modus (oder wenn deaktiviert) darf
+        # es dort nicht als "Geister-Slide" liegen bleiben.
+        if enabled and display_mode == "slide":
+            if HOURS_WIDGET_ID not in config["playlist"]:
+                config["playlist"].append(HOURS_WIDGET_ID)
+        else:
+            config["playlist"] = [f for f in config["playlist"] if f != HOURS_WIDGET_ID]
     return jsonify({"status": "ok"})
 
 
@@ -802,7 +826,8 @@ def api_playlist():
             if key in data:
                 if key == "playlist":
                     text_ids = set(config.get("text_slides", {}).keys())
-                    if config.get("opening_hours", {}).get("enabled"):
+                    oh_cfg = config.get("opening_hours", {})
+                    if oh_cfg.get("enabled") and oh_cfg.get("display_mode", "banner") == "slide":
                         text_ids.add(HOURS_WIDGET_ID)
                     config[key] = [f for f in data[key] if (MEDIA_DIR / f).is_file() or f in text_ids]
                 elif key == "layout":
@@ -849,16 +874,31 @@ def api_player_next():
     # unabhängig vom sonst konfigurierten Layout, damit sie maximal auffällt.
     emergency = config.get("emergency")
     if emergency:
-        return jsonify({
-            "items": [{
+        emergency_item = None
+        if emergency.get("media"):
+            fp = MEDIA_DIR / emergency["media"]
+            if fp.is_file():
+                emergency_item = {
+                    "filename": emergency["media"],
+                    "type": "video" if fp.suffix.lower() in VIDEO_EXTENSIONS else "image",
+                    "zone": "main",
+                    "url": url_for("serve_media", filename=emergency["media"]),
+                }
+            # Falls die Datei zwischenzeitlich gelöscht wurde, während der Notfall
+            # aktiv war: nicht mit einem kaputten Bild hängenbleiben, sondern auf
+            # eine generische Textmeldung zurückfallen.
+        if emergency_item is None:
+            emergency_item = {
                 "filename": "__emergency__",
                 "type": "text",
                 "zone": "main",
-                "text": emergency.get("text", ""),
+                "text": emergency.get("text") or "Notfall aktiv",
                 "bg_color": emergency.get("bg_color", "#dc2626"),
                 "text_color": emergency.get("text_color", "#ffffff"),
                 "icon": emergency.get("icon", "🚨"),
-            }],
+            }
+        return jsonify({
+            "items": [emergency_item],
             "layout": "fullscreen",
             "display_duration": config.get("display_duration", 8),
             "transition": "none",
@@ -868,6 +908,7 @@ def api_player_next():
             "background_image": "",
             "secondary_background_color": "#000000",
             "ken_burns": False,
+            "opening_hours_banner": None,
         })
 
     playlist = list(config.get("playlist", []))
@@ -885,7 +926,8 @@ def api_player_next():
     for name in playlist:
         zone = item_zone.get(name, "main") if layout != "fullscreen" else "main"
         if name == HOURS_WIDGET_ID:
-            if config.get("opening_hours", {}).get("enabled"):
+            oh_cfg_loop = config.get("opening_hours", {})
+            if oh_cfg_loop.get("enabled") and oh_cfg_loop.get("display_mode", "banner") == "slide":
                 widget = build_hours_widget_item(config, now)
                 widget["zone"] = zone
                 items.append(widget)
@@ -910,6 +952,17 @@ def api_player_next():
                 "type": "video" if fp.suffix.lower() in VIDEO_EXTENSIONS else "image",
                 "zone": zone,
             })
+    oh_cfg = config.get("opening_hours", {})
+    opening_hours_banner = None
+    if oh_cfg.get("enabled") and oh_cfg.get("display_mode", "banner") == "banner":
+        status = compute_hours_status(config, now)
+        opening_hours_banner = {
+            "text": status["text"],
+            "bg_color": oh_cfg.get("bg_color", "#0f766e"),
+            "text_color": oh_cfg.get("text_color", "#ffffff"),
+            "icon": "✅" if status["open_now"] else "🔒",
+        }
+
     return jsonify({
         "items": items,
         "layout": layout,
@@ -921,6 +974,7 @@ def api_player_next():
         "background_image": config.get("background_image", ""),
         "secondary_background_color": config.get("secondary_background_color", "#000000"),
         "ken_burns": config.get("ken_burns", False),
+        "opening_hours_banner": opening_hours_banner,
     })
 
 
