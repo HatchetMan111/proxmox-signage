@@ -506,7 +506,7 @@ def admin():
     weekday_labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     oh = config.get("opening_hours", {})
     oh_display_mode = oh.get("display_mode", "banner")
-    if oh_display_mode not in ("banner", "slide"):
+    if oh_display_mode not in ("banner", "slide", "off"):
         oh_display_mode = "banner"
     oh_days = []
     for i, label in enumerate(weekday_labels):
@@ -537,10 +537,12 @@ def player():
 def api_status():
     with _last_seen_lock:
         seen = _last_seen_at
+    now = datetime.now()
+    server_time = now.strftime("%H:%M:%S")
     if seen is None:
-        return jsonify({"last_seen": None, "seconds_ago": None})
-    seconds_ago = (datetime.now() - seen).total_seconds()
-    return jsonify({"last_seen": seen.isoformat(), "seconds_ago": round(seconds_ago)})
+        return jsonify({"last_seen": None, "seconds_ago": None, "server_time": server_time})
+    seconds_ago = (now - seen).total_seconds()
+    return jsonify({"last_seen": seen.isoformat(), "seconds_ago": round(seconds_ago), "server_time": server_time})
 
 
 @app.route("/api/media", methods=["GET"])
@@ -710,7 +712,7 @@ def api_set_opening_hours():
         config["opening_hours"]["enabled"] = enabled
         config["opening_hours"]["hours"] = hours
         display_mode = data.get("display_mode")
-        if display_mode not in ("banner", "slide"):
+        if display_mode not in ("banner", "slide", "off"):
             display_mode = config["opening_hours"].get("display_mode", "banner")
         config["opening_hours"]["display_mode"] = display_mode
         if "bg_color" in data:

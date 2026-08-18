@@ -38,7 +38,7 @@ Wir helfen dir, deinen Laden mit verschiedenen Lösungen ins 21. Jahrhundert zu 
 | 🖥️ **Split-Screen-Layouts** | Bildschirm in Bereiche teilen (Haupt + Ticker/Seitenleiste/2er-Split), jeder Bereich mit eigener unabhängiger Wiedergabe |
 | 🟢 **Live-Status** | Admin zeigt, ob der Player gerade online ist, plus Warnhinweis, falls gerade nichts angezeigt wird (z. B. wegen Zeitplan) |
 | 🚨 **Notfall-Override** | Ein Klick überschreibt sofort ALLES mit Text ODER einem eigenen hochgeladenen Bild/Video (z. B. ein in Canva gestaltetes Schild), unabhängig von Playlist/Layout/Zeitplänen |
-| 🕐 **Öffnungszeiten-Widget** | Zeigt automatisch "Geöffnet bis X Uhr" bzw. "Geschlossen" – wahlweise als immer sichtbares Banner unten oder als rotierendes Element |
+| 🕐 **Öffnungszeiten-Widget** | Zeigt automatisch "Geöffnet bis X Uhr" bzw. "Geschlossen" – als Banner, rotierendes Element oder ganz deaktiviert |
 | 📋 **Schnellvorlagen** | Vorausgefüllte Text-Slide-Vorlagen für die häufigsten Fälle (geschlossen, gleich zurück, Sonderangebot) |
 | 🖼️ **Automatische Bildkomprimierung** | Zu große Uploads werden automatisch auf eine sinnvolle Auflösung verkleinert (max. 2560px), spart Speicherplatz |
 | 📺 **Jeder Browser** | Läuft auf Tablet, Smart-TV, Handy, Laptop – kein App-Store nötig |
@@ -213,6 +213,9 @@ Du darfst das Projekt **frei nutzen, verändern, weitergeben und kommerziell ein
 ---
 
 ## 💡 FAQ
+
+**Öffnungszeiten-Widget zeigt "Geschlossen", obwohl ich geöffnet habe?**  
+Meist ein Zeitzonen-Problem: frische Debian-Container laufen standardmäßig auf UTC statt deiner Ortszeit. Seit diesem Update setzt der Installer die Container-Zeitzone automatisch auf die deines Proxmox-Hosts (`--timezone host`). Bei einer bestehenden Installation reicht ein `--update`, um das nachzuziehen. Zur Kontrolle zeigt die Öffnungszeiten-Karte im Admin-Panel jetzt die aktuelle Server-Zeit an – stimmt die nicht mit deiner Uhr überein, ist das der Grund.
 
 **Brauche ich eine Internetverbindung zum Betreiben?**  
 Nur für die Installation (Paket-Download). Danach läuft alles lokal.

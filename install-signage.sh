@@ -298,6 +298,22 @@ ensure_pillow_installed() {
         || warn "Pillow-Installation fehlgeschlagen – Uploads funktionieren trotzdem, nur ohne automatische Komprimierung"
 }
 
+# Container-Zeitzone auf die des Proxmox-Hosts angleichen. Frische Debian-
+# Templates laufen standardmäßig auf UTC - ohne diesen Fix berechnet das
+# Öffnungszeiten-Widget (und jeder Zeitplan) auf Basis von UTC statt der
+# tatsächlichen Ortszeit, was je nach Tageszeit zu falschen "Geschlossen"-
+# Anzeigen führt, obwohl gerade geöffnet ist.
+ensure_correct_timezone() {
+    local host_tz container_tz
+    host_tz=$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo "")
+    container_tz=$(pct exec "$CT_ID" -- cat /etc/timezone 2>/dev/null || echo "")
+    if [[ -n "$host_tz" && "$host_tz" != "$container_tz" ]]; then
+        info "Setze Container-Zeitzone auf Host-Zeitzone (${host_tz})..."
+        pct set "$CT_ID" --timezone host 2>&1 | tail -2
+        ok "Zeitzone angeglichen (war zuvor: ${container_tz:-unbekannt})"
+    fi
+}
+
 # ── systemd-Service schreiben ───────────────────────────────────────────────
 # Gemeinsam von Neuinstallation UND Update genutzt, damit bestehende
 # Container beim --update denselben Fix (Waitress statt Dev-Server) und
@@ -423,9 +439,10 @@ create_container() {
         --features nesting=1 \
         --onboot 1 \
         --start 0 \
+        --timezone host \
         2>&1 | tail -3
 
-    ok "Container $CT_ID erstellt"
+    ok "Container $CT_ID erstellt (Zeitzone: identisch zum Proxmox-Host)"
 }
 
 # ── Container einrichten ───────────────────────────────────────────────────
@@ -453,6 +470,7 @@ setup_container() {
 
     ensure_waitress_installed
     ensure_pillow_installed
+    ensure_correct_timezone
     check_disk_space
 
     # App-Dateien kopieren
@@ -524,6 +542,7 @@ update_container() {
     # write_systemd_service), bestehende Logins bleiben also gültig.
     ensure_waitress_installed
     ensure_pillow_installed
+    ensure_correct_timezone
     write_systemd_service
 
     pct exec "$CT_ID" -- systemctl restart signage

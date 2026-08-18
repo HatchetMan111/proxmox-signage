@@ -373,8 +373,9 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
       <div class="setting-row" style="margin-top:.5rem">
         <label>Anzeige als</label>
         <select id="ohDisplayMode">
-          <option value="banner"{% if oh_display_mode != 'slide' %} selected{% endif %}>📍 Banner (immer sichtbar, unten)</option>
+          <option value="banner"{% if oh_display_mode != 'slide' and oh_display_mode != 'off' %} selected{% endif %}>📍 Banner (immer sichtbar, unten)</option>
           <option value="slide"{% if oh_display_mode == 'slide' %} selected{% endif %}>🔄 Rotierendes Element (wie ein Slide)</option>
+          <option value="off"{% if oh_display_mode == 'off' %} selected{% endif %}>🚫 Nicht anzeigen (Zeiten trotzdem gespeichert)</option>
         </select>
       </div>
       <div id="ohDays" style="margin-top:.5rem">
@@ -389,6 +390,7 @@ body{font-family:var(--font);background:var(--paper);color:var(--ink);line-heigh
         {% endfor %}
       </div>
       <div id="ohPreview" style="font-size:.76rem;color:var(--ink-soft);background:var(--paper);border-radius:6px;padding:.5rem .7rem;margin-top:.4rem"></div>
+      <div id="serverTimeInfo" style="font-size:.72rem;color:var(--ink-faint);margin-top:.4rem">🕐 Server-Zeit: <span id="serverTimeValue">–</span> <span style="cursor:help" title="Stimmt diese Uhrzeit nicht mit deiner tatsächlichen Ortszeit überein, rechnet das Widget falsch. Bei Proxmox-LXC-Containern hilft: pct set &lt;ID&gt; --timezone host">ⓘ stimmt das mit deiner Uhr überein?</span></div>
       <button onclick="saveOpeningHours()" class="btn btn-accent" style="margin-top:.5rem;width:100%">💾 Speichern</button>
     </div>
     <div class="card">
@@ -689,9 +691,13 @@ function computeHoursPreview(){
 function updateHoursPreview(){
   const el=document.getElementById("ohPreview");if(!el)return;
   if(!document.getElementById("ohEnabled").checked){el.textContent="Widget ist deaktiviert";return}
-  el.textContent="Vorschau (jetzt): "+computeHoursPreview();
+  const mode=document.getElementById("ohDisplayMode").value;
+  const computed=computeHoursPreview();
+  if(mode==="off"){el.textContent="Wird NICHT angezeigt (Modus: Aus) – würde gerade zeigen: "+computed;return}
+  el.textContent="Vorschau (jetzt): "+computed;
 }
-document.querySelectorAll("#ohDays input,#ohEnabled").forEach(inp=>inp.addEventListener("input",updateHoursPreview));
+document.querySelectorAll("#ohDays input,#ohEnabled,#ohDisplayMode").forEach(inp=>inp.addEventListener("input",updateHoursPreview));
+document.getElementById("ohDisplayMode")?.addEventListener("change",updateHoursPreview);
 updateHoursPreview();
 async function saveOpeningHours(){
   const enabled=document.getElementById("ohEnabled").checked;
@@ -715,10 +721,12 @@ async function saveOpeningHours(){
 
 // Player-Status ("zuletzt online") -- pollt selbst, kein Seiten-Reload nötig
 async function pollPlayerStatus(){
-  const el=document.getElementById("playerStatus");if(!el)return;
+  const el=document.getElementById("playerStatus");
   try{
     const r=await fetch(BASE+"/api/status",{credentials:"include"});
     const d=await r.json();
+    const stv=document.getElementById("serverTimeValue");if(stv)stv.textContent=d.server_time||"–";
+    if(!el)return;
     const dot=el.querySelector(".status-dot"),label=el.querySelector("span:last-child");
     if(d.seconds_ago===null){dot.className="status-dot";label.textContent="Player war noch nie online"}
     else if(d.seconds_ago<90){dot.className="status-dot online";label.textContent="Player online · zuletzt gesehen vor "+d.seconds_ago+"s"}
